@@ -5,6 +5,7 @@ test, assert, capabilities, FXOSCamera */
 suite('fxos-camera >>', function() {
   'use strict';
 
+  var ViewfinderProto = window['./lib/viewfinder'].prototype;
   var InternalProto = FXOSCamera.Internal.prototype;
   var mozCamera;
   var dom;
@@ -17,7 +18,7 @@ suite('fxos-camera >>', function() {
     dom.style.width = '320px';
     document.body.appendChild(dom);
 
-    this.sinon.stub(InternalProto, 'setStream');
+    this.sinon.stub(ViewfinderProto, 'setStream');
 
     navigator.mozCameras = {
       getListOfCameras: sinon.stub().returns(['front', 'back']),
@@ -410,7 +411,30 @@ suite('fxos-camera >>', function() {
       });
     });
 
-    suite('viewfinder geometry >>', function() {
+    suite('viewfinder >>', function() {
+      test('it rotates the viewfinder to match the sensor-angle', function() {
+        var wrapper = el.shadowRoot.querySelector('.wrapper');
+        var sensorAngle = mozCamera.sensorAngle;
+
+        assert.include(wrapper.style.transform, sensorAngle);
+      });
+
+      test('the viewfinder is mirrored for front camera', function() {
+        var wrapper = el.shadowRoot.querySelector('.wrapper');
+        return el.setCamera('front')
+          .then(() => {
+            assert.include(wrapper.style.transform, 'scale(-1, 1)');
+          });
+      });
+
+      test('the viewfinder is mirrored for front camera', function() {
+        var wrapper = el.shadowRoot.querySelector('.wrapper');
+        return el.setCamera('front')
+          .then(() => {
+            assert.include(wrapper.style.transform, 'scale(-1, 1)');
+          });
+      });
+
       test('can define a function to dynamically define scaleType', function() {
         var wrapper = el.shadowRoot.querySelector('.wrapper');
         var size;
@@ -438,6 +462,55 @@ suite('fxos-camera >>', function() {
           .then(() => {
             assert.equal(wrapper.clientWidth, Math.round(size.width));
             assert.equal(wrapper.clientHeight, Math.round(size.height));
+          });
+      });
+    });
+
+    suite('get()', function() {
+      test('it returns the available picture sizes', function() {
+        return el.get('pictureSizes')
+          .then(result => {
+            var pictureSizes = capabilities.flame.back.pictureSizes;
+            assert.equal(pictureSizes[0].width, result[0].width);
+            assert.equal(pictureSizes[0].height, result[0].height);
+            el.setCamera('front');
+            return el.get('pictureSizes');
+          })
+
+          .then(result => {
+            var pictureSizes = capabilities.flame.front.pictureSizes;
+            assert.equal(pictureSizes[0].width, result[0].width);
+            assert.equal(pictureSizes[0].height, result[0].height);
+          });
+      });
+    });
+
+    suite('persistence >>', function() {
+      test.only('the pictureSize persists', function() {
+        return el.get('pictureSizes')
+          .then(sizes => el.setPictureSize(sizes[1]))
+          .then(() => {
+            el.remove();
+            el = create();
+            return el.complete;
+          })
+
+          .then(() => el.get('pictureSize'))
+          .then(result => {
+            console.log('XXX', result);
+          });
+      });
+
+      test('the flash mode persists', function() {
+        return el.setFlashMode('off')
+          .then(() => {
+            el.remove();
+            el = create();
+            return el.get('flashMode');
+          })
+
+          .then(result => {
+            assert.equal(result, 'off');
           });
       });
     });

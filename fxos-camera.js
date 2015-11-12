@@ -5,6 +5,7 @@
  * Dependencies
  */
 
+var Viewfinder = require('./lib/viewfinder');
 var MozCamera = require('./lib/moz-camera');
 var component = require('gaia-component');
 
@@ -13,7 +14,7 @@ var component = require('gaia-component');
  *
  * @type {Funciton}
  */
-var debug = 0 ? (...args) => console.log('[FXOSCamera]', ...args) : () => {};
+var debug = 1 ? (...args) => console.log('[FXOSCamera]', ...args) : () => {};
 
 /**
  * Private internal key.
@@ -65,6 +66,14 @@ var FXOSCameraPrototype = {
     return this[internal].setFlashMode(value);
   },
 
+  setPictureSize(value) {
+    return this[internal].setPictureSize(value);
+  },
+
+  get(value) {
+    return this[internal].get(value);
+  },
+
   setSceneMode(value) {
     return this[internal].setSceneMode(value);
   },
@@ -90,6 +99,17 @@ var FXOSCameraPrototype = {
     maxFileSize: {
       set(value) { this[internal].setMaxFileSize(value); },
       get() { return this[internal].maxFileSize; }
+    },
+
+    flush: {
+      get() { return !!this[internal].flush; },
+      set(value) {
+        value = !!value || value === '';
+        if (this.flush === value) return;
+        if (value) this.el.setAttribute('flush', '');
+        else this.el.removeAttribute('flush');
+        this[internal].flush = value;
+      },
     }
   },
 
@@ -102,21 +122,12 @@ var FXOSCameraPrototype = {
     </div>
   </div>
   <style>
-
     :host {
       position: relative;
 
       display: block;
       width: 100%;
       height: 100%;
-
-      opacity: 1;
-      transition: opacity 200ms ease-in-out;
-      background: black;
-    }
-
-    :host.hidden {
-      opacity: 0;
     }
 
     .inner {
@@ -130,22 +141,10 @@ var FXOSCameraPrototype = {
 
       justify-content: center;
       overflow: hidden;
-      transition: opacity 360ms ease-in-out;
     }
 
     /**
-     * scale-type=fill
-     */
-
-    .inner[scale-type=fill] {
-      align-items: center;
-    }
-
-    /** Frame
-     ---------------------------------------------------------*/
-
-    /**
-     * 1. The grid should never overflow the viewport.
+     * 1. Should never overflow the viewport.
      */
 
     .frame {
@@ -156,9 +155,6 @@ var FXOSCameraPrototype = {
       justify-content: center;
       align-items: center;
     }
-
-    /** Video wrapper
-     ---------------------------------------------------------*/
 
     .wrapper {
       flex-shrink: 0;
@@ -171,9 +167,6 @@ var FXOSCameraPrototype = {
     .wrapper.shutter {
       animation: 400ms shutter-animation;
     }
-
-    /** Video
-     ---------------------------------------------------------*/
 
     video {
       width: 100%;
@@ -206,8 +199,8 @@ function Internal(el) {
     video: shadow.querySelector('video')
   };
 
+  this.viewfinder = new Viewfinder(this);
   this.complete = new Deferred();
-  this.fadeRequests = 0;
   this.pending = {};
 
   this.mode = 'picture';
@@ -221,10 +214,12 @@ Internal.prototype = {
 
     delete this.isTorndown;
 
-    return this.isSetup = this.fadeOut({ instant: true })
-      .then(() => this.load())
-      .then(() => this.fadeIn())
-      .then(this.complete.resolve);
+    return this.isSetup =
+      this.viewfinder.hide({ instant: true })
+        .then(() => this.load())
+        .then(() => this.viewfinder.show())
+        .then(this.complete.resolve)
+        .catch(this.complete.reject);
   },
 
   teardown() {
@@ -246,7 +241,7 @@ Internal.prototype = {
   },
 
   load() {
-    debug('load', this.loading);
+    debug('load');
     if (this.loading) return this.loading;
 
     // don't reload unnecessarily
@@ -276,26 +271,20 @@ Internal.prototype = {
           return this.load();
         }
 
-        this.updatePreview(this.camera.previewSize);
-        this.setStream(this.camera.mozCamera);
+        this.viewfinder.resize(this.camera);
+        this.viewfinder.setStream(this.camera.stream);
         return this.camera;
       });
 
     return this._loaded = this.loading = loaded;
   },
 
-  setStream(src) {
-    debug('set stream');
-    this.els.video.mozSrcObject = src;
-    this.els.video.play();
-  },
-
   setType(type) {
     debug('set type', type);
     this.type = type;
-    this.fadeOut();
+    this.viewfinder.hide();
     return this.load()
-      .then(() => this.fadeIn());
+      .then(() => this.viewfinder.show());
   },
 
   setMode(mode) {
@@ -305,7 +294,7 @@ Internal.prototype = {
     this.mode = mode;
 
     return this.loaded()
-      .then(() => this.fadeOut())
+      .then(() => this.viewfinder.hide())
       .then(() => {
         debug('setting mode', this.mode);
         return this.camera.configure({ mode: this.mode });
@@ -319,7 +308,7 @@ Internal.prototype = {
         }
       })
 
-      .then(() => this.fadeIn());
+      .then(() => this.viewfinder.show());
   },
 
   setMaxFileSize(value) {
@@ -353,6 +342,10 @@ Internal.prototype = {
           return this.camera.setPictureSize(this.pictureSize);
         }
       });
+  },
+
+  getPictureSizes() {
+
   },
 
   setRecorderProfile(value) {
@@ -407,79 +400,6 @@ Internal.prototype = {
       });
   },
 
-  fadeOut(options) {
-    return new Promise((resolve, reject) => {
-      this.fadeRequests++;
-      if (this.hidden) return resolve();
-      debug('fading out');
-
-      var instant = options && options.instant;
-      this.el.style.transitionDuration = instant ? '0ms' : '';
-      this.el.style.opacity = 0;
-
-      if (instant) resolve();
-      else once(this.el, 'transitionend', resolve, 200);
-
-      this.hidden = true;
-    });
-  },
-
-  fadeIn(options) {
-    return new Promise((resolve, reject) => {
-      if (--this.fadeRequests) return resolve();
-      if (!this.hidden) return resolve();
-      debug('fading in');
-
-      var instant = options && options.instant;
-      this.el.style.transitionDuration = instant ? '0ms' : '';
-      this.el.style.opacity = 1;
-
-      if (instant) resolve();
-      else once(this.el, 'transitionend', resolve, 200);
-
-      this.hidden = false;
-    });
-  },
-
-  updatePreview(previewSize) {
-    debug('update preview');
-    var mirrored = this.type === 'front';
-    var container = this.getContainerGeometry();
-    var sizes = {
-      fill: scaleTo.fill(container, previewSize),
-      fit: scaleTo.fit(container, previewSize)
-    };
-
-    var scaleType = this.getScaleType(sizes);
-    var landscape = sizes[scaleType];
-    var portrait = {
-      width: landscape.height,
-      height: landscape.width
-    };
-
-    // Set the size of the frame to match 'portrait' dimensions
-    this.els.frame.style.width = portrait.width + 'px';
-    this.els.frame.style.height = portrait.height + 'px';
-
-    var transform = '';
-    if (mirrored) transform += 'scale(-1, 1) ';
-    transform += `rotate(${this.get('sensorAngle')}deg)`;
-
-    // Set the size of the video container to match the
-    // 'landscape' dimensions (CSS is used to rotate
-    // the 'landscape' video stream to 'portrait')
-    this.els.wrapper.style.width = landscape.width + 'px';
-    this.els.wrapper.style.height = landscape.height + 'px';
-    this.els.wrapper.style.transform = transform;
-
-    // CSS aligns the contents slightly
-    // differently depending on the scaleType
-    this.el.setAttr('scaleType', scaleType);
-    this.viewfinderSize = portrait;
-
-    debug('updated preview size/position', landscape, transform);
-  },
-
   createConfig(params) {
     var result = {};
 
@@ -495,44 +415,9 @@ Internal.prototype = {
     return result;
   },
 
-  getWidth() {
-    return this.el.clientWidth;
-  },
-
-  getHeight() {
-    return this.el.clientHeight;
-  },
-
-  getContainerGeometry() {
-    var width = this.getWidth();
-    var height = this.getHeight();
-
-    // Invert dimensions if the camera's
-    // `sensorAngle` is 0 or 180 degrees.
-    if (this.get('sensorAngle') % 180 === 0) {
-      return {
-        width: width,
-        height: height,
-        aspect: width / height
-      };
-    } else {
-      return {
-        width: height,
-        height: width,
-        aspect: height / width
-      };
-    }
-  },
-
-  getScaleType(sizes) {
-    debug('get scale type', sizes);
-    return typeof this.el.scaleType === 'function'
-      ? this.el.scaleType(sizes)
-      : this.el.scaleType || 'fit';
-  },
-
   get(key) {
-    return this[key] || this.camera.get(key);
+    return this.loaded()
+      .then(() => this.camera.get(key));
   },
 
   emit(name, detail) {
@@ -558,44 +443,6 @@ module.exports = FXOSCamera;
 /**
  * Utils
  */
-
-var scaleTo = {
-  fill(container, image) {
-    debug('scaleTo fill', container, image);
-    var sw = container.width / image.width;
-    var sh = container.height / image.height;
-
-    // Select the larger scale to fill and overflow viewport with image
-    var scale = Math.max(sw, sh);
-
-    return {
-      width: image.width * scale,
-      height: image.height * scale
-    };
-  },
-
-  fit(container, image) {
-    var sw = container.width / image.width;
-    var sh = container.height / image.height;
-
-    // Select the smaller scale to fit image completely within the viewport
-    var scale = Math.min(sw, sh);
-
-    return {
-      width: image.width * scale,
-      height: image.height * scale
-    };
-  }
-};
-
-function once(el, name, fn, max) {
-  var timeout = setTimeout(fn, max);
-  el.addEventListener('transitionend', function cb() {
-    el.removeEventListener('transitionend', cb);
-    clearTimeout(timeout);
-    fn();
-  });
-}
 
 function Deferred() {
   this.promise = new Promise((resolve, reject) => {

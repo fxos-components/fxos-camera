@@ -15,9 +15,12 @@ module.exports = function(config) {
     files: [
       'node_modules/gaia-component/gaia-component.js',
       'lib/moz-camera/format-sizes.js',
+      'lib/storage.js',
+      'lib/moz-camera/focus.js',
       'lib/moz-camera/picture.js',
       'lib/moz-camera/video.js',
       'lib/moz-camera/moz-camera.js',
+      'lib/viewfinder.js',
       'fxos-camera.js',
       'test/lib/capabilities.js',
       'test/test.js'
