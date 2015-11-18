@@ -14,6 +14,7 @@ module.exports = function(config) {
     // list of files / patterns to load in the browser
     files: [
       'node_modules/gaia-component/gaia-component.js',
+      'lib/moz-camera/pick-thumbnail-size.js',
       'lib/moz-camera/format-sizes.js',
       'lib/storage.js',
       'lib/moz-camera/focus.js',
@@ -23,6 +24,8 @@ module.exports = function(config) {
       'lib/viewfinder.js',
       'fxos-camera.js',
       'test/lib/capabilities.js',
+      'test/lib/mock-moz-camera.js',
+      'test/lib/mock-device-storage.js',
       'test/test.js'
     ],
 

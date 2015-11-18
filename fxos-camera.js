@@ -74,6 +74,10 @@ var FXOSCameraPrototype = {
     return this[internal].get(value);
   },
 
+  set(key, value) {
+    return this[internal].set(key, value);
+  },
+
   setSceneMode(value) {
     return this[internal].setSceneMode(value);
   },
@@ -237,7 +241,10 @@ Internal.prototype = {
   },
 
   loaded() {
-    return this._loaded || Promise.reject('no camera');
+    return Promise.all([
+      this.isSetup,
+      this._loaded
+    ]);
   },
 
   load() {
@@ -271,7 +278,7 @@ Internal.prototype = {
           return this.load();
         }
 
-        this.viewfinder.resize(this.camera);
+        this.viewfinder.update(this.camera);
         this.viewfinder.setStream(this.camera.stream);
         return this.camera;
       });
@@ -332,6 +339,7 @@ Internal.prototype = {
       .then(() => this.camera.stopRecording());
   },
 
+  // TODO should onnly fade out if in picture mode
   setPictureSize(value) {
     debug('set picture size', value);
     this.pictureSize = value;
@@ -344,10 +352,7 @@ Internal.prototype = {
       });
   },
 
-  getPictureSizes() {
-
-  },
-
+  // TODO should onnly fade out if in video mode
   setRecorderProfile(value) {
     debug('set recorder profile', value);
     this.recorderProfile = value;
@@ -418,6 +423,20 @@ Internal.prototype = {
   get(key) {
     return this.loaded()
       .then(() => this.camera.get(key));
+  },
+
+  set(key, value) {
+    debug('set', key, value);
+    switch (key) {
+      case 'recorderProfile': return this.setRecorderProfile(value);
+      case 'pictureSize': return this.setPictureSize(value);
+      case 'maxFileSize': return this.setMaxFileSize(value);
+      case 'sceneMode': return this.setSceneMode(value);
+      case 'flashMode': return this.setFlashMode(value);
+      case 'camera': return this.setType(value);
+      case 'mode': return this.setMode(value);
+      default: return Promise.reject(new Error('unknown setting'));
+    }
   },
 
   emit(name, detail) {

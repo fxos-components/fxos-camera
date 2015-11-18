@@ -303,7 +303,235 @@ var capabilities = {
       maxExposureCompensation: 2.0000039935112,
       exposureCompensationStep: 0.16666699945926666,
       recorderProfiles: {
+        '480p': {
+          name: '480p',
+          containerFormat: 'mp4',
+          mimeType: 'video/mp4',
+          audio: {
+            codec: 'aac',
+            bitsPerSecond: 156000,
+            samplesPerSecond: 48000,
+            channels: 2
+          },
+          video: {
+            codec: 'h264',
+            bitsPerSecond: 2000000,
+            framesPerSecond: 30,
+            size: {
+              height: 480,
+              width: 720
+            },
+            width: 720,
+            height: 480
+          }
+        },
 
+        'default': {
+          name: '480p',
+          containerFormat: 'mp4',
+          mimeType: 'video/mp4',
+          audio: {
+            codec: 'aac',
+            bitsPerSecond: 156000,
+            samplesPerSecond: 48000,
+            channels: 2
+          },
+          video: {
+            codec: 'h264',
+            bitsPerSecond: 2000000,
+            framesPerSecond: 30,
+            size: {
+              height: 480,
+              width: 720
+            },
+            width: 720,
+            height: 480
+          }
+        },
+
+        fwvga: {
+          'name': 'fwvga',
+          'containerFormat': '3gp',
+          'mimeType': 'video/3gpp',
+          'audio': {
+            'codec': 'aac',
+            'bitsPerSecond': 156000,
+            'samplesPerSecond': 48000,
+            'channels': 2
+          },
+          'video': {
+            'codec': 'h264',
+            'bitsPerSecond': 2000000,
+            'framesPerSecond': 30,
+            'size': {
+              'height': 480,
+              'width': 864
+            },
+            'width': 864,
+            'height': 480
+          }
+        },
+
+        high: {
+          'name': 'high',
+          'containerFormat': 'mp4',
+          'mimeType': 'video/mp4',
+          'audio': {
+            'codec': 'aac',
+            'bitsPerSecond': 156000,
+            'samplesPerSecond': 48000,
+            'channels': 2
+          },
+          'video': {
+            'codec': 'h264',
+            'bitsPerSecond': 14000000,
+            'framesPerSecond': 30,
+            'size': {
+              'height': 720,
+              'width': 1280
+            },
+            'width': 1280,
+            'height': 720
+          }
+        },
+
+        low: {
+          'name': 'low',
+          'containerFormat': '3gp',
+          'mimeType': 'video/3gpp',
+          'audio': {
+            'codec': 'amrnb',
+            'bitsPerSecond': 12200,
+            'samplesPerSecond': 8000,
+            'channels': 1
+          },
+          'video': {
+            'codec': 'h264',
+            'bitsPerSecond': 192000,
+            'framesPerSecond': 30,
+            'size': {
+              'height': 144,
+              'width': 176
+            },
+            'width': 176,
+            'height': 144
+          }
+        },
+
+        qvga: {
+          'name': 'qvga',
+          'containerFormat': 'mp4',
+          'mimeType': 'video/mp4',
+          'audio': {
+            'codec': 'aac',
+            'bitsPerSecond': 156000,
+            'samplesPerSecond': 48000,
+            'channels': 2
+          },
+          'video': {
+            'codec': 'h264',
+            'bitsPerSecond': 512000,
+            'framesPerSecond': 30,
+            'size': {
+              'height': 240,
+              'width': 320
+            },
+            'width': 320,
+            'height': 240
+          }
+        },
+
+        vga: {
+          'name': 'vga',
+          'containerFormat': 'mp4',
+          'mimeType': 'video/mp4',
+          'audio': {
+            'codec': 'aac',
+            'bitsPerSecond': 156000,
+            'samplesPerSecond': 48000,
+            'channels': 2
+          },
+          'video': {
+            'codec': 'h264',
+            'bitsPerSecond': 2000000,
+            'framesPerSecond': 30,
+            'size': {
+              'height': 480,
+              'width': 640
+            },
+            'width': 640,
+            'height': 480
+          }
+        },
+
+        '720p': {
+          'name': '720p',
+          'containerFormat': 'mp4',
+          'mimeType': 'video/mp4',
+          'audio': {
+            'codec': 'aac',
+            'bitsPerSecond': 156000,
+            'samplesPerSecond': 48000,
+            'channels': 2
+          },
+          'video': {
+            'codec': 'h264',
+            'bitsPerSecond': 14000000,
+            'framesPerSecond': 30,
+            'size': {
+              'height': 720,
+              'width': 1280
+            },
+            'width': 1280,
+            'height': 720
+          }
+        },
+
+        'cif': {
+          'name': 'cif',
+          'containerFormat': '3gp',
+          'mimeType': 'video/3gpp',
+          'audio': {
+            'codec': 'amrnb',
+            'bitsPerSecond': 12200,
+            'samplesPerSecond': 8000,
+            'channels': 1
+          },
+          'video': {
+            'codec': 'h264',
+            'bitsPerSecond': 720000,
+            'framesPerSecond': 30,
+            'size': {
+              'height': 288,
+              'width': 352
+            },
+            'width': 352,
+            'height': 288
+          }
+        },
+
+        'wvga': {
+          'name': 'wvga',
+          'containerFormat': 'mp4',
+          'mimeType': 'video/mp4',
+          'audio': {
+            'codec': 'aac',
+            'bitsPerSecond': 156000,
+            'samplesPerSecond': 48000,
+            'channels': 2
+          },
+          'video': {
+            'codec': 'h264',
+            'bitsPerSecond': 2000000,
+            'framesPerSecond': 30,
+            'size': {
+              'height': 480,
+              'width': 800
+            },
+            'width': 800,
+            'height': 480
+          }
+        }
       },
 
       isoModes: [
@@ -536,7 +764,145 @@ var capabilities = {
       minExposureCompensation: -2.0000039935112,
       maxExposureCompensation: 2.0000039935112,
       exposureCompensationStep: 0.16666699945926666,
-      recorderProfiles: {},
+      recorderProfiles: {
+        cif: {
+          'name': 'cif',
+          'containerFormat': '3gp',
+          'mimeType': 'video/3gpp',
+          'audio': {
+            'codec': 'amrnb',
+            'bitsPerSecond': 12200,
+            'samplesPerSecond': 8000,
+            'channels': 1
+          },
+          'video': {
+            'codec': 'h264',
+            'bitsPerSecond': 720000,
+            'framesPerSecond': 30,
+            'size': {
+              'height': 288,
+              'width': 352
+            },
+            'width': 352,
+            'height': 288
+          }
+        },
+
+        'default': {
+          'name': 'vga',
+          'containerFormat': 'mp4',
+          'mimeType': 'video/mp4',
+          'audio': {
+            'codec': 'aac',
+            'bitsPerSecond': 156000,
+            'samplesPerSecond': 48000,
+            'channels': 2
+          },
+          'video': {
+            'codec': 'h264',
+            'bitsPerSecond': 2000000,
+            'framesPerSecond': 30,
+            'size': {
+              'height': 480,
+              'width': 640
+            },
+            'width': 640,
+            'height': 480
+          }
+        },
+
+        low: {
+          'name': 'low',
+          'containerFormat': '3gp',
+          'mimeType': 'video/3gpp',
+          'audio': {
+            'codec': 'amrnb',
+            'bitsPerSecond': 12200,
+            'samplesPerSecond': 8000,
+            'channels': 1
+          },
+          'video': {
+            'codec': 'h264',
+            'bitsPerSecond': 192000,
+            'framesPerSecond': 30,
+            'size': {
+              'height': 144,
+              'width': 176
+            },
+            'width': 176,
+            'height': 144
+          }
+        },
+
+        qcif: {
+          'name': 'qcif',
+          'containerFormat': '3gp',
+          'mimeType': 'video/3gpp',
+          'audio': {
+            'codec': 'amrnb',
+            'bitsPerSecond': 12200,
+            'samplesPerSecond': 8000,
+            'channels': 1
+          },
+          'video': {
+            'codec': 'h264',
+            'bitsPerSecond': 192000,
+            'framesPerSecond': 30,
+            'size': {
+              'height': 144,
+              'width': 176
+            },
+            'width': 176,
+            'height': 144
+          }
+        },
+
+        qvga: {
+          'name': 'qvga',
+          'containerFormat': 'mp4',
+          'mimeType': 'video/mp4',
+          'audio': {
+            'codec': 'aac',
+            'bitsPerSecond': 156000,
+            'samplesPerSecond': 48000,
+            'channels': 2
+          },
+          'video': {
+            'codec': 'h264',
+            'bitsPerSecond': 512000,
+            'framesPerSecond': 30,
+            'size': {
+              'height': 240,
+              'width': 320
+            },
+            'width': 320,
+            'height': 240
+          }
+        },
+
+        vga: {
+          'name': 'vga',
+          'containerFormat': 'mp4',
+          'mimeType': 'video/mp4',
+          'audio': {
+            'codec': 'aac',
+            'bitsPerSecond': 156000,
+            'samplesPerSecond': 48000,
+            'channels': 2
+          },
+          'video': {
+            'codec': 'h264',
+            'bitsPerSecond': 2000000,
+            'framesPerSecond': 30,
+            'size': {
+              'height': 480,
+              'width': 640
+            },
+            'width': 640,
+            'height': 480
+          }
+        }
+      },
       isoModes: [
         'auto',
         'hjr',

@@ -1,12 +1,11 @@
-/* global suite, sinon, setup, teardown,
-test, assert, capabilities, FXOSCamera */
 /*jshint maxlen:false*/
+/* global suite, sinon, setup, teardown, test, assert, capabilities, MockMozCamera, MockDeviceStorage */
 
 suite('fxos-camera >>', function() {
   'use strict';
 
   var ViewfinderProto = window['./lib/viewfinder'].prototype;
-  var InternalProto = FXOSCamera.Internal.prototype;
+  var storage = window['../storage'];
   var mozCamera;
   var dom;
 
@@ -26,7 +25,7 @@ suite('fxos-camera >>', function() {
       getCamera: sinon.spy(function(camera, config) {
         var defer = new Deferred();
 
-        mozCamera = new MozCamera(camera, config);
+        mozCamera = new MockMozCamera(camera, config);
 
         setTimeout(() => {
           defer.resolve({
@@ -42,6 +41,7 @@ suite('fxos-camera >>', function() {
 
   teardown(function() {
     this.sinon.restore();
+    storage.clear();
     dom.remove();
   });
 
@@ -64,11 +64,13 @@ suite('fxos-camera >>', function() {
     });
 
     test('it has a flashMode', function() {
-      assert.equal(el.flashMode, 'auto');
+      return el.get('flashMode')
+        .then(value => assert.equal(value, 'auto'));
     });
 
     test('it has a sceneMode', function() {
-      assert.equal(el.sceneMode, 'auto');
+      return el.get('sceneMode')
+        .then(value => assert.equal(value, 'auto'));
     });
 
     suite('#setCamera()', function() {
@@ -121,24 +123,25 @@ suite('fxos-camera >>', function() {
       });
 
       test('it should fade out before configuring', function() {
-        this.sinon.spy(InternalProto, 'fadeOut');
+        this.sinon.spy(ViewfinderProto, 'hide');
 
         return el.setMode('video')
           .then(() => {
-            assert.ok(InternalProto.fadeOut.calledBefore(mozCamera.setConfiguration));
+            assert.ok(ViewfinderProto.hide.calledBefore(mozCamera.setConfiguration));
           });
       });
     });
 
     suite('fading in/out', function() {
       test('it should only fade in after the last task is done', function(done) {
+        var frame = el.shadowRoot.querySelector('.frame');
         var count = 2;
 
         el.setMode('video').then(complete).catch(done);
         el.setCamera('front').then(complete).catch(done);
 
         function complete() {
-          var opacity = el.style.opacity;
+          var opacity = frame.style.opacity;
           if (--count) {
             assert.equal(opacity, '0');
             return;
@@ -153,9 +156,10 @@ suite('fxos-camera >>', function() {
     suite('#setFlashMode()', function() {
       test('it sets the flashMode on the moz camera', function() {
         return el.setFlashMode('on')
-          .then(() => {
+          .then(() => el.get('flashMode'))
+          .then(result => {
+            assert.equal(result, 'on');
             assert.equal(mozCamera.flashMode, 'on');
-            assert.equal(el.flashMode, 'on');
           });
       });
 
@@ -185,20 +189,23 @@ suite('fxos-camera >>', function() {
     });
 
     suite('#sceneMode()', function() {
-      test('it sets the flashMode on the moz camera', function() {
-        return el.setSceneMode('landscape')
-          .then(() => {
+      test('it sets the sceneMode on the MozCamera', function() {
+        return el.set('sceneMode', 'landscape')
+          .then(() => el.get('sceneMode'))
+          .then(result => {
+            assert.equal(result, 'landscape');
             assert.equal(mozCamera.sceneMode, 'landscape');
-            assert.equal(el.sceneMode, 'landscape');
           });
       });
 
       test('it can be called directly after .setCamera()', function() {
         el.setCamera('front');
         el.setCamera('back');
-        return el.setSceneMode('sunset')
-          .then(() => {
+        return el.set('sceneMode', 'sunset')
+          .then(() => el.get('sceneMode'))
+          .then(result => {
             assert.equal(el.camera, 'back');
+            assert.equal(result, 'sunset');
             assert.equal(mozCamera.sceneMode, 'sunset');
           });
       });
@@ -264,11 +271,44 @@ suite('fxos-camera >>', function() {
       });
     });
 
+    suite('thumbnail size >>', function() {
+      test('it sets a thumbnail size when camera is aquired', function() {
+        sinon.assert.calledOnce(mozCamera.setThumbnailSize);
+        assert.deepEqual(mozCamera.thumbnailSize, { height: 480, width: 640 });
+      });
+
+      test('it sets a thumbnail size when pictureSize changes', function() {
+        var key;
+
+        mozCamera.setThumbnailSize.reset();
+        return el.get('pictureSizes')
+          .then(sizes => {
+            key = sizes[1].key;
+            return el.set('pictureSize', key);
+          })
+
+          .then(() => {
+            sinon.assert.calledOnce(mozCamera.setThumbnailSize);
+            assert.deepEqual(mozCamera.thumbnailSize, { height: 480, width: 640 });
+          });
+      });
+
+      test('it sets a thumbnail size when the camera changes', function() {
+        var expected = { height: 480, width: 640 };
+        mozCamera.setThumbnailSize.reset();
+        return el.setCamera('front')
+          .then(() => {
+            sinon.assert.calledWith(mozCamera.setThumbnailSize, expected);
+            assert.deepEqual(mozCamera.thumbnailSize, expected);
+          });
+      });
+    });
+
     suite('video recording', function() {
       var deviceStorage;
 
       setup(function() {
-        deviceStorage = new DeviceStorage();
+        deviceStorage = new MockDeviceStorage();
       });
 
       suite('#startRecording()', function() {
@@ -401,12 +441,12 @@ suite('fxos-camera >>', function() {
       test('able to .setup() again after .teardown()', function() {
         return el.teardown()
           .then(() => {
-            InternalProto.setStream.reset();
+            ViewfinderProto.setStream.reset();
             return el.setup();
           })
 
           .then(() => {
-            sinon.assert.calledOnce(InternalProto.setStream);
+            sinon.assert.calledOnce(ViewfinderProto.setStream);
           });
       });
     });
@@ -464,6 +504,38 @@ suite('fxos-camera >>', function() {
             assert.equal(wrapper.clientHeight, Math.round(size.height));
           });
       });
+
+      test('face elements match maxFaceCount', function() {
+        var faces = el.shadowRoot.querySelectorAll('.face');
+        assert.equal(faces.length, mozCamera.capabilities.maxDetectedFaces);
+      });
+    });
+
+    suite('Focus()', function() {
+      test('it sets `continuous-picture` mode when available', function() {
+        assert.equal(mozCamera.focusMode, 'continuous-picture');
+      });
+
+      test('it fallbacks to any available mode', function() {
+        return el.set('camera', 'front')
+          .then(() => {
+            assert.equal(mozCamera.focusMode, 'fixed');
+          });
+      });
+
+      suite('face detection >>', function() {
+        test('it is started when available', function() {
+          sinon.assert.calledOnce(mozCamera.startFaceDetection);
+        });
+
+        test('it is stopped when the camera changes', function() {
+          var firstCamera = mozCamera;
+          return el.set('camera', 'front')
+            .then(() => {
+              sinon.assert.calledOnce(firstCamera.stopFaceDetection);
+            });
+        });
+      });
     });
 
     suite('get()', function() {
@@ -486,9 +558,14 @@ suite('fxos-camera >>', function() {
     });
 
     suite('persistence >>', function() {
-      test.only('the pictureSize persists', function() {
+      test('the pictureSize persists', function() {
+        var key;
+
         return el.get('pictureSizes')
-          .then(sizes => el.setPictureSize(sizes[1]))
+          .then(sizes => {
+            key = sizes[2].key;
+            return el.set('pictureSize', key);
+          })
           .then(() => {
             el.remove();
             el = create();
@@ -497,7 +574,26 @@ suite('fxos-camera >>', function() {
 
           .then(() => el.get('pictureSize'))
           .then(result => {
-            console.log('XXX', result);
+            assert.equal(result, key);
+          });
+      });
+
+      test('the recorderProfile persists', function() {
+        var size;
+        return el.get('recorderProfiles')
+          .then(sizes => {
+            size = sizes[1].key;
+            return el.set('recorderProfile', size);
+          })
+
+          .then(() => {
+            el.remove();
+            el = create();
+            return el.get('recorderProfile');
+          })
+
+          .then(result => {
+            assert.equal(result, size);
           });
       });
 
@@ -528,130 +624,6 @@ suite('fxos-camera >>', function() {
     dom.appendChild(el);
     return el;
   }
-
-  function MozCamera(camera, config) {
-    this.sensorAngle = 270;
-    this.flashMode = 'auto';
-    this.sceneMode = 'auto';
-    this.effect = 'none';
-
-    this.configuration = {
-      previewSize: {
-        height: 480,
-        width: 640
-      },
-      pictureSize: {
-        height: 1536,
-        width: 2048
-      },
-      recorderProfile: '720p',
-      mode: config.mode
-    };
-
-    this.capabilities = capabilities.flame[camera];
-    this.emitter = document.createElement('div');
-
-    sinon.spy(this, 'setConfiguration');
-    sinon.spy(this, 'startRecording');
-    sinon.spy(this, 'stopRecording');
-    sinon.spy(this, 'takePicture');
-    sinon.spy(this, 'release');
-  }
-
-  MozCamera.prototype = {
-    release() {
-      var defer = new Deferred();
-
-      setTimeout(() => {
-        defer.resolve();
-      }, 100);
-
-      return defer.promise;
-    },
-
-    setConfiguration(config) {
-      var defer = new Deferred();
-      Object.assign(this.configuration, config);
-
-      setTimeout(() => {
-        defer.resolve(this.configuration);
-      }, 100);
-
-      return defer.promise;
-    },
-
-    addEventListener(name, fn) {
-      this.emitter.addEventListener(name, fn);
-    },
-
-    removeEventListener(name, fn) {
-      this.emitter.removeEventListener(name, fn);
-    },
-
-    emit(name, data) {
-      var event = new CustomEvent(name);
-      Object.assign(event, data || {});
-      this.emitter.dispatchEvent(event);
-    },
-
-    takePicture(config, onSuccess, onError) {
-      setTimeout(() => {
-        var result = new Blob(['']);
-        onSuccess(result);
-      }, 100);
-    },
-
-    startRecording(config, storage, filePath, onSuccess, onError) {
-      setTimeout(() => {
-        this.storage = storage;
-        this.emit('recorderstatechange', { newState: 'Started' });
-        this.emit('poster', { data: new Blob(['']) });
-        if (this.error) onError(this.error);
-        else onSuccess();
-      }, 100);
-    },
-
-    stopRecording() {
-      setTimeout(() => {
-        this.emit('recorderstatechange', { newState: 'Stopped' });
-      }, 100);
-    }
-  };
-
-  function DeviceStorage() {
-    sinon.spy(this, 'get');
-    sinon.spy(this, 'delete');
-    sinon.spy(this, 'freeSpace');
-    this.space = 100000000;
-  }
-
-  DeviceStorage.prototype = {
-    get(filePath) {
-      var defer = new Deferred();
-
-      setTimeout(() => {
-        defer.resolve(new Blob(['']));
-      });
-
-      return defer.promise;
-    },
-
-    delete(filePath) {
-      var defer = new Deferred();
-      return defer.promise;
-    },
-
-    freeSpace() {
-      var request = {};
-
-      setTimeout(() => {
-        request.result = this.space;
-        request.onsuccess();
-      });
-
-      return request;
-    }
-  };
 
   function Deferred() {
     this.promise = new Promise((resolve, reject) => {
