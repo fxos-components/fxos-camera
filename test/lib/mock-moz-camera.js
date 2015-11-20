@@ -23,7 +23,6 @@ window.MockMozCamera = (function() {
       });
     }
 
-
     var thumbnailSizes = this.capabilities.thumbnailSizes;
     this.thumbnailSize = thumbnailSizes[thumbnailSizes.length - 1];
 
@@ -132,8 +131,54 @@ window.MockMozCamera = (function() {
       setTimeout(() => {
         this.emit('recorderstatechange', { newState: 'Stopped' });
       }, 100);
-    }
+    },
+
+    onSetAsSrcObject(video) {
+      video.play = () => {
+        setTimeout(() => {
+          this.emit('previewstatechange', { newState: 'started' });
+        });
+      };
+    },
   };
+
+  MockMozCamera.faces = [
+    {
+      id: 1,
+      score: 55,
+      hasLeftEye: true,
+      hasRightEye: true,
+      hasMouth: true,
+      bounds: {
+        bottom: 291,
+        height: 333,
+        left: 0,
+        right: 250,
+        top: -42,
+        width: 250,
+        x: 0,
+        y: -42
+      }
+    },
+
+    {
+      id: 2,
+      score: 60,
+      hasLeftEye: true,
+      hasRightEye: true,
+      hasMouth: true,
+      bounds: {
+        bottom: 407,
+        height: 291,
+        left: -279,
+        right: -61,
+        top: 116,
+        width: 218,
+        x: -297,
+        y: -116
+      }
+    }
+  ];
 
   /**
    * Utils

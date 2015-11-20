@@ -21,6 +21,7 @@ module.exports = function(config) {
       'lib/moz-camera/picture.js',
       'lib/moz-camera/video.js',
       'lib/moz-camera/moz-camera.js',
+      'lib/camera-coordinates.js',
       'lib/viewfinder.js',
       'fxos-camera.js',
       'test/lib/capabilities.js',

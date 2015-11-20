@@ -29,6 +29,8 @@ var internal = Symbol();
  * @type {Object}
  */
 var FXOSCameraPrototype = {
+  extensible: false,
+
   created() {
     debug('created');
     this.setupShadowRoot();
@@ -259,10 +261,15 @@ Internal.prototype = {
     var loaded = this.release()
       .then(() => {
         debug('loading ...');
-        var config = this.createConfig();
-        this.camera = new MozCamera(this.type, config);
-        this.camera.setMaxFileSize(this.maxFileSize);
-        this.camera.onError = err => this.onError(err);
+
+        this.camera = new MozCamera({
+          type: this.type,
+          mode: this.mode,
+          onError: e => this.onError(e),
+          onFacesChanged: e => this.onFacesChanged(e),
+          onFocusChanged: e => this.onFocusChanged(e)
+        });
+
         return this.camera.ready;
       })
 
@@ -279,8 +286,7 @@ Internal.prototype = {
         }
 
         this.viewfinder.update(this.camera);
-        this.viewfinder.setStream(this.camera.stream);
-        return this.camera;
+        return this.camera.streamInto(this.viewfinder.els.video);
       });
 
     return this._loaded = this.loading = loaded;
@@ -288,10 +294,17 @@ Internal.prototype = {
 
   setType(type) {
     debug('set type', type);
+    if (!this.knownType(type)) return Promise.reject('unknown type');
     this.type = type;
     this.viewfinder.hide();
     return this.load()
       .then(() => this.viewfinder.show());
+  },
+
+  knownType(type) {
+    return !!~navigator.mozCameras
+      .getListOfCameras()
+      .indexOf(type);
   },
 
   setMode(mode) {
@@ -352,7 +365,7 @@ Internal.prototype = {
       });
   },
 
-  // TODO should onnly fade out if in video mode
+  // TODO should only fade out if in video mode
   setRecorderProfile(value) {
     debug('set recorder profile', value);
     this.recorderProfile = value;
@@ -377,7 +390,8 @@ Internal.prototype = {
     debug('set flash mode', value);
     this.flashMode = value;
     return this.loaded()
-      .then(() => this.camera.setFlashMode(this.flashMode))
+      .then(() => {
+        return this.camera.setFlashMode(this.flashMode); })
       .then(result => this.flashMode = result);
   },
 
@@ -403,21 +417,6 @@ Internal.prototype = {
         debug('released');
         delete this.camera;
       });
-  },
-
-  createConfig(params) {
-    var result = {};
-
-    [
-      'mode',
-      'pictureSize',
-      'recorderProfile',
-      'previewSize'
-    ].forEach(key => {
-      if (this[key]) result[key] = this[key];
-    });
-
-    return result;
   },
 
   get(key) {
@@ -448,7 +447,17 @@ Internal.prototype = {
 
   onError(err) {
     this.emit('error', err);
-  }
+  },
+
+  onFocusChanged(value) {
+    debug('focus changed', value);
+    this.viewfinder.setFocus(value);
+  },
+
+  onFacesChanged(faces) {
+    debug('faces changed', faces);
+    this.viewfinder.setFaces(faces);
+  },
 };
 
 /**

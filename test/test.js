@@ -1,10 +1,15 @@
 /*jshint maxlen:false*/
-/* global suite, sinon, setup, teardown, test, assert, capabilities, MockMozCamera, MockDeviceStorage */
+/* global suite, sinon, setup, teardown, test, assert, capabilities, MockMozCamera, MockDeviceStorage, HTMLMediaElement */
 
 suite('fxos-camera >>', function() {
   'use strict';
 
+  var realMozSrcObject = Object.getOwnPropertyDescriptor(
+    HTMLMediaElement.prototype,
+    'mozSrcObject');
+
   var ViewfinderProto = window['./lib/viewfinder'].prototype;
+  var MozCameraProto = window['./lib/moz-camera'].prototype;
   var storage = window['../storage'];
   var mozCamera;
   var dom;
@@ -17,7 +22,20 @@ suite('fxos-camera >>', function() {
     dom.style.width = '320px';
     document.body.appendChild(dom);
 
-    this.sinon.stub(ViewfinderProto, 'setStream');
+    this.sinon.spy(MozCameraProto, 'streamInto');
+
+    // Stops DOM throwing when setting
+    // fake <video> mediaStream
+    Object.defineProperty(
+      HTMLMediaElement.prototype,
+      'mozSrcObject', {
+        set(mozCamera) {
+          this._mozSrcObject = mozCamera;
+          mozCamera.onSetAsSrcObject(this);
+        },
+        get() { return this._mozSrcObject; }
+      }
+    );
 
     navigator.mozCameras = {
       getListOfCameras: sinon.stub().returns(['front', 'back']),
@@ -37,11 +55,19 @@ suite('fxos-camera >>', function() {
         return defer.promise;
       })
     };
+
+    storage.clear();
   });
 
   teardown(function() {
-    this.sinon.restore();
+    Object.defineProperty(
+      HTMLMediaElement.prototype,
+      'mozSrcObject',
+      realMozSrcObject
+    );
+
     storage.clear();
+    this.sinon.restore();
     dom.remove();
   });
 
@@ -59,8 +85,19 @@ suite('fxos-camera >>', function() {
         .then(() => console.log('DOWN'));
     });
 
-    test('it calls .getCamera()', function() {
-      sinon.assert.calledOnce(navigator.mozCameras.getCamera);
+    suite('getCamera()', function() {
+      test('it calls .getCamera()', function() {
+        sinon.assert.calledOnce(navigator.mozCameras.getCamera);
+      });
+
+      test('it only provides defined config keys', function() {
+        var config = navigator.mozCameras.getCamera.args[0][1];
+        assert.deepEqual(config, { mode: 'picture' });
+      });
+
+      test('it defaults to back camera', function() {
+        sinon.assert.calledWith(navigator.mozCameras.getCamera, 'back');
+      });
     });
 
     test('it has a flashMode', function() {
@@ -116,8 +153,10 @@ suite('fxos-camera >>', function() {
         el.setMode('video');
         el.setMode('picture');
         el.setMode('video');
+        el.setMode('picture');
 
-        return el.setMode('picture').then(() => {
+        return el.setMode('video').then(() => {
+          sinon.assert.calledOnce(mozCamera.setConfiguration);
           sinon.assert.calledOnce(mozCamera.setConfiguration);
         });
       });
@@ -424,7 +463,6 @@ suite('fxos-camera >>', function() {
 
     suite('detachedCallback()', function() {
       test('it should release the camera', function(done) {
-        console.log('----');
         sinon.assert.notCalled(mozCamera.release);
         el.remove();
 
@@ -432,21 +470,23 @@ suite('fxos-camera >>', function() {
         setTimeout(() => {
           sinon.assert.calledOnce(mozCamera.release);
           done();
-          console.log('----');
         });
       });
     });
 
     suite('#teardown()', function() {
       test('able to .setup() again after .teardown()', function() {
+        var video = el.shadowRoot.querySelector('video');
+
         return el.teardown()
           .then(() => {
-            ViewfinderProto.setStream.reset();
+            MozCameraProto.streamInto.reset();
             return el.setup();
           })
 
           .then(() => {
-            sinon.assert.calledOnce(ViewfinderProto.setStream);
+            sinon.assert.calledOnce(MozCameraProto.streamInto);
+            sinon.assert.calledWith(MozCameraProto.streamInto, video);
           });
       });
     });
@@ -506,7 +546,7 @@ suite('fxos-camera >>', function() {
       });
 
       test('face elements match maxFaceCount', function() {
-        var faces = el.shadowRoot.querySelectorAll('.face');
+        var faces = el.querySelectorAll('.face');
         assert.equal(faces.length, mozCamera.capabilities.maxDetectedFaces);
       });
     });
@@ -534,6 +574,48 @@ suite('fxos-camera >>', function() {
             .then(() => {
               sinon.assert.calledOnce(firstCamera.stopFaceDetection);
             });
+        });
+
+        suite('2 faces detected', function() {
+          setup(function() {
+            mozCamera.emit('facesdetected', {
+              faces: MockMozCamera.faces
+            });
+          });
+
+          test('it places the faces in the right place', function() {
+            var faces = Array.from(el.querySelectorAll('.face'));
+            var visible = 0;
+
+            faces.forEach(el => {
+              var visibility = getComputedStyle(el).visibility;
+              if (visibility === 'visible') visible++;
+            });
+
+            assert.equal(visible, 2);
+          });
+
+          suite('1 face detected', function() {
+            setup(function() {
+              mozCamera.emit('facesdetected', {
+                faces: [MockMozCamera.faces[0]]
+              });
+            });
+
+            test('it places the faces in the right place', function() {
+
+            });
+
+            suite('no faces detected', function() {
+              setup(function() {
+                mozCamera.emit('facesdetected', { faces: [] });
+              });
+
+              test('it places the faces in the right place', function() {
+
+              });
+            });
+          });
         });
       });
     });
