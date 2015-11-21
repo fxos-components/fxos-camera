@@ -84,8 +84,8 @@ var FXOSCameraPrototype = {
     return this[internal].setSceneMode(value);
   },
 
-  takePicture(options) {
-    return this[internal].takePicture(options);
+  takePicture(filePath, options) {
+    return this[internal].takePicture(filePath, options);
   },
 
   startRecording(options) {
@@ -337,9 +337,9 @@ Internal.prototype = {
       .then(() => this.camera.setMaxFileSize(value));
   },
 
-  takePicture(options) {
+  takePicture(filePath, options) {
     return this.loaded()
-      .then(() => this.camera.takePicture(options));
+      .then(() => this.camera.takePicture(filePath, options));
   },
 
   startRecording(options) {

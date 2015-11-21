@@ -1,5 +1,5 @@
 /*jshint maxlen:false*/
-/* global suite, sinon, setup, teardown, test, assert, capabilities, MockMozCamera, MockDeviceStorage, HTMLMediaElement */
+/* global suite, sinon, setup, teardown, test, assert, capabilities, MockMozCamera, MockDeviceStorage, HTMLMediaElement, File */
 
 suite('fxos-camera >>', function() {
   'use strict';
@@ -11,6 +11,7 @@ suite('fxos-camera >>', function() {
   var ViewfinderProto = window['./lib/viewfinder'].prototype;
   var MozCameraProto = window['./lib/moz-camera'].prototype;
   var storage = window['../storage'];
+  var deviceStorage;
   var mozCamera;
   var dom;
 
@@ -55,6 +56,11 @@ suite('fxos-camera >>', function() {
         return defer.promise;
       })
     };
+
+    navigator.getDeviceStorage = sinon.spy(type => {
+      deviceStorage = new MockDeviceStorage(type);
+      return deviceStorage;
+    });
 
     storage.clear();
   });
@@ -273,8 +279,8 @@ suite('fxos-camera >>', function() {
           });
       });
 
-      test('roation is passed to WebAPI', function() {
-        return el.takePicture({ rotation: 90 })
+      test('rotation is passed to WebAPI', function() {
+        return el.takePicture('my-picture.jpg', { rotation: 90 })
           .then(picture => {
             var config = mozCamera.takePicture.lastCall.args[0];
             assert.equal(config.rotation, 90);
@@ -283,7 +289,7 @@ suite('fxos-camera >>', function() {
 
       test('roation is mirrored for front camera', function() {
         el.setCamera('front');
-        return el.takePicture({ rotation: 90 })
+        return el.takePicture('my-picture.jpg', { rotation: 90 })
           .then(picture => {
             var config = mozCamera.takePicture.lastCall.args[0];
             assert.equal(config.rotation, -90);
@@ -292,7 +298,7 @@ suite('fxos-camera >>', function() {
 
       test('`postition` is passed to WebAPI', function() {
         var position = { lat: 0, lon: 0 };
-        return el.takePicture({ position: position })
+        return el.takePicture('my-picture.jpg', { position: position })
           .then(picture => {
             var config = mozCamera.takePicture.lastCall.args[0];
             assert.equal(config.position, position);
@@ -300,9 +306,9 @@ suite('fxos-camera >>', function() {
       });
 
       test('it returns a fully decorated `Picture`', function() {
-        return el.takePicture()
+        return el.takePicture('foo.jpg')
           .then(picture => {
-            assert.isTrue(picture.blob instanceof Blob);
+            assert.isTrue(picture.file instanceof File);
             assert.ok(picture.width);
             assert.ok(picture.height);
             assert.ok(picture.timeStamp);
@@ -344,16 +350,9 @@ suite('fxos-camera >>', function() {
     });
 
     suite('video recording', function() {
-      var deviceStorage;
-
-      setup(function() {
-        deviceStorage = new MockDeviceStorage();
-      });
-
       suite('#startRecording()', function() {
         test('it waits until camera is \'ready\'', function() {
           return el.startRecording({
-              storage: deviceStorage,
               filePath: 'foo/bar/video.3gp',
               rotation: 90
             });
@@ -361,7 +360,6 @@ suite('fxos-camera >>', function() {
 
         test('it records to the given filePath', function() {
           return el.startRecording({
-              storage: deviceStorage,
               filePath: 'foo/bar/video.3gp',
               rotation: 90
             })
@@ -374,7 +372,6 @@ suite('fxos-camera >>', function() {
 
         test('it records to the given DeviceStorage', function() {
           return el.startRecording({
-              storage: deviceStorage,
               filePath: 'foo/bar/video.3gp',
               rotation: 90
             })
@@ -387,7 +384,6 @@ suite('fxos-camera >>', function() {
 
         test('it passes rotation to WebAPI', function() {
           return el.startRecording({
-              storage: deviceStorage,
               filePath: 'foo/bar/video.3gp',
               rotation: 90
             })
@@ -439,7 +435,6 @@ suite('fxos-camera >>', function() {
       suite('#stopRecording()', function() {
         setup(function() {
           return el.startRecording({
-            storage: deviceStorage,
             filePath: 'foo/bar/video.3gp',
             rotation: 90
           });
@@ -451,7 +446,7 @@ suite('fxos-camera >>', function() {
               assert.ok(video.poster.blob instanceof Blob);
               assert.ok(video.poster.width);
               assert.ok(video.poster.height);
-              assert.ok(video.blob instanceof Blob);
+              assert.ok(video.file instanceof File);
             });
         });
       });
@@ -578,9 +573,9 @@ suite('fxos-camera >>', function() {
 
         suite('2 faces detected', function() {
           setup(function() {
-            mozCamera.emit('facesdetected', {
-              faces: MockMozCamera.faces
-            });
+            this.sinon.stub(window, 'requestAnimationFrame');
+            mozCamera.emit('facesdetected', { faces: MockMozCamera.faces });
+            window.requestAnimationFrame.yield();
           });
 
           test('it places the faces in the right place', function() {

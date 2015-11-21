@@ -1,13 +1,15 @@
-/*global sinon*/
+/*global sinon, File*/
 /*jshint maxlen:false*/
 
 window.MockDeviceStorage = (function() {
 
-  function MockDeviceStorage() {
+  function MockDeviceStorage(type) {
+    this.type = type;
     sinon.spy(this, 'get');
     sinon.spy(this, 'delete');
     sinon.spy(this, 'freeSpace');
     this.space = 100000000;
+    this.files = {};
   }
 
   MockDeviceStorage.prototype = {
@@ -15,10 +17,22 @@ window.MockDeviceStorage = (function() {
       var defer = new Deferred();
 
       setTimeout(() => {
-        defer.resolve(new Blob(['']));
+        defer.resolve(this.files[filePath]);
       });
 
       return defer.promise;
+    },
+
+    addNamed(blob, filePath) {
+      var request = {};
+
+      setTimeout(() => {
+        request.result = `/absolute/path/${filePath}`;
+        this.files[filePath] = new File([''], filePath);
+        request.onsuccess({ target: request });
+      });
+
+      return request;
     },
 
     delete(filePath) {

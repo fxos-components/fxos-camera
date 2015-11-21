@@ -112,18 +112,20 @@ window.MockMozCamera = (function() {
 
     takePicture(config, onSuccess, onError) {
       setTimeout(() => {
-        var result = new Blob(['']);
-        onSuccess(result);
+        onSuccess(new Blob(['']));
       }, 100);
     },
 
     startRecording(config, storage, filePath, onSuccess, onError) {
       setTimeout(() => {
         this.storage = storage;
-        this.emit('recorderstatechange', { newState: 'Started' });
-        this.emit('poster', { data: new Blob(['']) });
-        if (this.error) onError(this.error);
-        else onSuccess();
+        var req = this.storage.addNamed(new Blob(['']), filePath);
+        req.onsuccess = e => {
+          this.emit('recorderstatechange', { newState: 'Started' });
+          this.emit('poster', { data: new Blob(['']) });
+          if (this.error) onError(this.error);
+          else onSuccess();
+        };
       }, 100);
     },
 
