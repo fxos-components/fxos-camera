@@ -14,7 +14,7 @@ var component = require('gaia-component');
  *
  * @type {Funciton}
  */
-var debug = 1 ? (...args) => console.log('[FXOSCamera]', ...args) : () => {};
+var debug = 0 ? (...args) => console.log('[FXOSCamera]', ...args) : () => {};
 
 /**
  * Private internal key.
@@ -123,8 +123,8 @@ var FXOSCameraPrototype = {
     <div class="frame">
       <div class="wrapper">
         <video></video>
+        <content></content>
       </div>
-      <content></content>
     </div>
   </div>
   <style>
