@@ -8,6 +8,7 @@ window.MockDeviceStorage = (function() {
     sinon.spy(this, 'get');
     sinon.spy(this, 'delete');
     sinon.spy(this, 'freeSpace');
+    sinon.spy(this, 'addNamed');
     this.space = 100000000;
     this.files = {};
   }

@@ -14,14 +14,14 @@ var component = require('gaia-component');
  *
  * @type {Funciton}
  */
-var debug = 0 ? (...args) => console.log('[FXOSCamera]', ...args) : () => {};
+var debug = 1 ? (...args) => console.log('[FXOSCamera]', ...args) : () => {};
 
 /**
  * Private internal key.
  *
  * @type {Symbol}
  */
-var internal = Symbol();
+var internal = 0 ? 'internal' : Symbol();
 
 /**
  * Public class.
@@ -35,25 +35,24 @@ var FXOSCameraPrototype = {
     debug('created');
     this.setupShadowRoot();
     this[internal] = new Internal(this);
-    this.complete = this[internal].complete.promise;
   },
 
   attached() {
     debug('attached');
-    this[internal].setup();
+    this[internal].attached();
   },
 
   detached() {
     debug('detached');
-    this[internal].teardown();
+    this[internal].detached();
   },
 
-  setup() {
-    return this[internal].setup();
+  start() {
+    return this[internal].start();
   },
 
-  teardown() {
-    return this[internal].teardown();
+  stop() {
+    return this[internal].stop();
   },
 
   setCamera(value) {
@@ -96,12 +95,11 @@ var FXOSCameraPrototype = {
     return this[internal].stopRecording();
   },
 
+  focus(point) {
+    return this[internal].focus(point);
+  },
+
   attrs: {
-    camera: { get() { return this[internal].type; }},
-    flashMode: { get() { return this[internal].get('flashMode'); }},
-    sceneMode: { get() { return this[internal].get('sceneMode'); }},
-    effect: { get() { return this[internal].get('effect'); }},
-    mode: { get() { return this[internal].mode; }},
     maxFileSize: {
       set(value) { this[internal].setMaxFileSize(value); },
       get() { return this[internal].maxFileSize; }
@@ -116,7 +114,10 @@ var FXOSCameraPrototype = {
         else this.el.removeAttribute('flush');
         this[internal].flush = value;
       },
-    }
+    },
+
+    started: { get() { return this[internal].started.promise; }},
+    stopped: { get() { return this[internal].stopped.promise; }}
   },
 
   template: `<div class="inner">
@@ -206,45 +207,66 @@ function Internal(el) {
   };
 
   this.viewfinder = new Viewfinder(this);
-  this.complete = new Deferred();
+  this.started = new Deferred();
   this.pending = {};
 
   this.mode = 'picture';
   this.type = 'back';
+
+  this.onVisibilityChange = this.onVisibilityChange.bind(this);
+  this.onFocusChanged = this.onFocusChanged.bind(this);
+  this.onFacesChanged = this.onFacesChanged.bind(this);
 }
 
 Internal.prototype = {
-  setup() {
-    if (this.isSetup) return this.isSetup;
-    debug('setting up ...');
-
-    delete this.isTorndown;
-
-    return this.isSetup =
-      this.viewfinder.hide({ instant: true })
-        .then(() => this.load())
-        .then(() => this.viewfinder.show())
-        .then(this.complete.resolve)
-        .catch(this.complete.reject);
+  attached() {
+    this.start();
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
   },
 
-  teardown() {
-    if (this.isTorndown) return this.isTorndown;
-    debug('tearing down ...');
+  detached() {
+    this.stop();
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
+  },
 
-    this.complete = new Deferred();
-    delete this.isSetup;
+  start() {
+    if (this._started) return this._started;
+    debug('starting ...');
 
-    return this.isTorndown = this.release()
+    delete this._stopped;
+    this.stopped = new Deferred();
+
+    return this._started = this.viewfinder.hide({ instant: true })
+        .then(() => this.load())
+        .then(() => this.viewfinder.show())
+        .then(() => {
+          debug('started');
+          this.started.resolve();
+        })
+
+        .catch(this.started.reject);
+  },
+
+  stop() {
+    if (this._stopped) return this._stopped;
+    debug('stopping ...');
+
+    delete this._started;
+    this.started = new Deferred();
+
+    return this._stopped = this.release()
       .then(() => {
         debug('torndown');
         delete this._loaded;
-      });
+      })
+
+      .then(this.stopped.resolve)
+      .catch(this.stopped.reject);
   },
 
   loaded() {
     return Promise.all([
-      this.isSetup,
+      this.started.promise,
       this._loaded
     ]);
   },
@@ -265,9 +287,9 @@ Internal.prototype = {
         this.camera = new MozCamera({
           type: this.type,
           mode: this.mode,
-          onError: e => this.onError(e),
-          onFacesChanged: e => this.onFacesChanged(e),
-          onFocusChanged: e => this.onFocusChanged(e)
+          onFocusChanged: this.onFocusChanged,
+          onFacesChanged: this.onFacesChanged,
+          onError: e => this.onError(e)
         });
 
         return this.camera.ready;
@@ -307,14 +329,15 @@ Internal.prototype = {
       .indexOf(type);
   },
 
-  setMode(mode) {
+  setMode(mode, options={}) {
     debug('set mode', mode);
     if (!this.knownMode(mode)) return Promise.reject('unknown mode');
+    var hide = options.hide !== false;
 
     this.mode = mode;
-
     return this.loaded()
-      .then(() => this.viewfinder.hide())
+      .then(() => hide && this.viewfinder.hide())
+
       .then(() => {
         debug('setting mode', this.mode);
         return this.camera.configure({ mode: this.mode });
@@ -324,11 +347,21 @@ Internal.prototype = {
         debug('mode set', this.camera.mode);
         if (this.camera.mode !== this.mode) {
           debug('mode changed during config', this.mode);
-          return this.camera.configure({ mode: this.mode });
+          return this.setMode(this.mode, { hide: false });
         }
       })
 
-      .then(() => this.viewfinder.show());
+      // If the camera was 'destroyed' before
+      // we could configure, we can try again.
+      // Any other error gets thrown back up
+      // the promise chain for the user to catch.
+      .catch(err => {
+        if (err.message !== 'destroyed') throw err;
+        return this.setMode(this.mode, { hide: false });
+      })
+
+      .then(() => this.viewfinder.update(this.camera))
+      .then(() => hide && this.viewfinder.show());
   },
 
   setMaxFileSize(value) {
@@ -352,6 +385,23 @@ Internal.prototype = {
       .then(() => this.camera.stopRecording());
   },
 
+  focus(e) {
+    return this.loaded()
+      .then(() => {
+        debug('focus', e);
+        var point = pxToPoint({
+          frame: this.els.video.getBoundingClientRect(),
+          angle: this.camera.sensorAngle,
+          mirrored: this.type === 'front',
+          x: e.clientX,
+          y: e.clientY,
+          diameter: 10
+        });
+
+        return this.camera.setFocus(point);
+      });
+  },
+
   // TODO should onnly fade out if in picture mode
   setPictureSize(value) {
     debug('set picture size', value);
@@ -362,7 +412,9 @@ Internal.prototype = {
         if (this.camera.pictureSize !== this.pictureSize) {
           return this.camera.setPictureSize(this.pictureSize);
         }
-      });
+      })
+
+      .then(() => this.viewfinder.update(this.camera));
   },
 
   // TODO should only fade out if in video mode
@@ -375,7 +427,9 @@ Internal.prototype = {
         if (this.camera.recorderProfile !== this.recorderProfile) {
           return this.camera.setRecorderProfile(this.recorderProfile);
         }
-      });
+      })
+
+      .then(() => this.viewfinder.update(this.camera));
   },
 
   setSceneMode(value) {
@@ -421,7 +475,13 @@ Internal.prototype = {
 
   get(key) {
     return this.loaded()
-      .then(() => this.camera.get(key));
+      .then(() => {
+        switch (key) {
+          case 'viewfinderSize': return this.viewfinder.size;
+          case 'camera': return this.camera.get('type');
+          default: return this.camera.get(key);
+        }
+      });
   },
 
   set(key, value) {
@@ -449,15 +509,21 @@ Internal.prototype = {
     this.emit('error', err);
   },
 
-  onFocusChanged(value) {
-    debug('focus changed', value);
-    this.viewfinder.setFocus(value);
+  onFocusChanged(value, point) {
+    debug('focus changed', value, point);
+    this.viewfinder.setFocus(value, point);
   },
 
   onFacesChanged(faces) {
     debug('faces changed', faces);
     this.viewfinder.setFaces(faces);
   },
+
+  onVisibilityChange() {
+    debug('visibilitychange', document.hidden);
+    if (document.hidden) this.stop();
+    else this.start();
+  }
 };
 
 /**
@@ -477,6 +543,68 @@ function Deferred() {
     this.resolve = resolve;
     this.reject = reject;
   });
+}
+
+function pxToPoint({x, y, diameter, frame, angle, mirrored}) {
+  var zeroX = frame.width / 2;
+  var zeroY = frame.height / 2;
+
+  // relative to frame edge
+  x -= frame.x;
+  y -= frame.y;
+
+  // offset by the point diameter
+  x -= diameter / 2;
+  y -= diameter / 2;
+
+  // relative to viewfinder center
+  x -= zeroX;
+  y -= zeroY;
+
+  // to relative percentage
+  x /= zeroX;
+  y /= zeroY;
+
+  // scale to camera size
+  x *= 1000;
+  y *= 1000;
+
+  // relative to frame
+  diameter /= frame.width;
+
+  // scale to camera size
+  diameter *= 2000;
+
+  // front camera needs flipping
+  if (mirrored) {
+    x = -x;
+    y = -y;
+  }
+
+  // rotate point to match sensor angle
+  var rotated = rotatePoint(x, y, angle);
+  x = rotated.x;
+  y = rotated.y;
+
+  return {
+    x: x,
+    y: y,
+    left: x,
+    top: y,
+    bottom: y + diameter,
+    right: x + diameter,
+    width: diameter,
+    height: diameter
+  };
+}
+
+function rotatePoint(x, y, angle) {
+  switch (angle) {
+    case 0: return { x: x, y: y };
+    case 90: case -270: return { x: y, y: -x };
+    case 180: case -180: return { x: -x, y: -y };
+    case 270: case -90: return { x: -y, y: x };
+  }
 }
 
 })})(((n1,n2,w)=>{return(typeof define)[0]=='f'&&define.amd?define:(typeof module)[0]=='o'?c =>{c(require,exports,module)}:c=>{var m={exports:{}},r=n=>w[n];w[n1]=w[n2]=c(r,m.exports,m)||m.exports;};})('fxos-camera','FXOSCamera',this));/*jshint ignore:line*/

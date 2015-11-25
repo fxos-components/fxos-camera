@@ -15,7 +15,7 @@
     "moz-extremely-unstable-and-will-change-webcomponents": {},
     "device-storage:pictures": { "access": "readwrite" },
     "device-storage:videos": { "access": "readwrite" },
-    "camera": {},
-    "geolocation": {}
+    "geolocation": {},
+    "camera": {}
   }
 }

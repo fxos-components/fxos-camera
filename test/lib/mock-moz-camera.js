@@ -49,8 +49,11 @@ window.MockMozCamera = (function() {
     sinon.spy(this, 'stopFaceDetection');
     sinon.spy(this, 'setConfiguration');
     sinon.spy(this, 'startRecording');
+    sinon.spy(this, 'setFocusAreas');
     sinon.spy(this, 'stopRecording');
+    sinon.spy(this, 'resumePreview');
     sinon.spy(this, 'takePicture');
+    sinon.spy(this, 'autoFocus');
     sinon.spy(this, 'release');
   }
 
@@ -75,6 +78,9 @@ window.MockMozCamera = (function() {
 
       setTimeout(() => {
         defer.resolve(this.configuration);
+        setTimeout(() => {
+          this.emit('previewstatechange', { newState: 'started' });
+        });
       }, 200);
 
       return defer.promise;
@@ -101,6 +107,11 @@ window.MockMozCamera = (function() {
     startFaceDetection() {},
     stopFaceDetection() {},
 
+    autoFocus() {
+      var defer = new Deferred();
+      setTimeout(() => defer.resolve(), 100);
+      return defer.promise;
+    },
     setFocusAreas() {},
     setMeteringAreas() {},
 
@@ -110,11 +121,17 @@ window.MockMozCamera = (function() {
       this.emitter.dispatchEvent(event);
     },
 
-    takePicture(config, onSuccess, onError) {
+    takePicture(config) {
+      var defer = new Deferred();
+
       setTimeout(() => {
-        onSuccess(new Blob(['']));
+        defer.resolve(new Blob(['']));
       }, 100);
+
+      return defer.promise;
     },
+
+    resumePreview() {},
 
     startRecording(config, storage, filePath, onSuccess, onError) {
       setTimeout(() => {

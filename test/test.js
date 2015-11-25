@@ -8,6 +8,7 @@ suite('fxos-camera >>', function() {
     HTMLMediaElement.prototype,
     'mozSrcObject');
 
+  var getDescriptor = Object.getOwnPropertyDescriptor;
   var ViewfinderProto = window['./lib/viewfinder'].prototype;
   var MozCameraProto = window['./lib/moz-camera'].prototype;
   var storage = window['../storage'];
@@ -82,12 +83,12 @@ suite('fxos-camera >>', function() {
 
     setup(function() {
       el = create();
-      return el.complete;
+      return el.started;
     });
 
     teardown(function() {
       console.log('TEAR');
-      return el.teardown()
+      return el.stop()
         .then(() => console.log('DOWN'));
     });
 
@@ -103,6 +104,64 @@ suite('fxos-camera >>', function() {
 
       test('it defaults to back camera', function() {
         sinon.assert.calledWith(navigator.mozCameras.getCamera, 'back');
+      });
+
+      suite('failure', function() {
+        var getCamera;
+        var defer;
+
+        setup(function() {
+          defer = new Deferred();
+          getCamera = navigator.mozCameras.getCamera;
+          navigator.mozCameras.getCamera = sinon.spy(() => defer.promise);
+          return el.stop()
+            .then(() => {
+              el.start();
+            });
+        });
+
+        test('it reattempts up to 3 times', function() {
+          this.sinon.useFakeTimers();
+          defer.reject(new DOMError('NS_ERROR_NOT_AVAILABLE'));
+
+          defer.promise
+            .catch(() => Promise.resolve())
+            .then(() => {
+              sinon.assert.calledOnce(navigator.mozCameras.getCamera);
+              this.sinon.clock.tick(1000);
+            })
+
+            .catch(() => Promise.resolve())
+            .then(() => {
+              sinon.assert.calledTwice(navigator.mozCameras.getCamera);
+              this.sinon.clock.tick(1000);
+            })
+
+            .catch(() => Promise.resolve())
+            .then(() => {
+              sinon.assert.calledThrice(navigator.mozCameras.getCamera);
+              this.sinon.clock.tick(1000);
+            });
+
+            return el.started
+              .catch(err => {
+                sinon.assert.callCount(navigator.mozCameras.getCamera, 4);
+                assert.equal(err.message, 'hardware-unavailable');
+              });
+        });
+
+        test('it can recover after second attempt succeeds', function() {
+          defer.reject(new DOMError('NS_ERROR_NOT_AVAILABLE'));
+
+          defer.promise
+            .catch(() => Promise.resolve())
+            .then(() => {
+              sinon.assert.calledOnce(navigator.mozCameras.getCamera);
+              navigator.mozCameras.getCamera = getCamera; // restore
+            });
+
+            return el.started;
+        });
       });
     });
 
@@ -126,8 +185,9 @@ suite('fxos-camera >>', function() {
               el.setCamera('back');
               setTimeout(() => {
                 el.setCamera('front')
-                  .then(() => {
-                    assert.equal(el.camera, 'front');
+                  .then(() => el.get('camera'))
+                  .then(result => {
+                    assert.equal(result, 'front');
                     sinon.assert.calledOnce(navigator.mozCameras.getCamera);
                   })
 
@@ -140,19 +200,27 @@ suite('fxos-camera >>', function() {
     });
 
     suite('#setMode()', function() {
+      setup(function() {
+        this.sinon.spy(ViewfinderProto, 'update');
+        this.sinon.spy(ViewfinderProto, 'show');
+        this.sinon.spy(ViewfinderProto, 'hide');
+      });
+
       test('it can be called straight after .setCamera()', function() {
         el.setCamera('front');
         return el.setMode('video')
-          .then(() => {
-            assert.equal(el.mode, 'video');
+          .then(() => el.get('mode'))
+          .then(result => {
+            assert.equal(result, 'video');
             return el.setMode('picture');
           })
 
-        .then(() => {
-          assert.equal(el.mode, 'picture');
-          var lastConfig = mozCamera.setConfiguration.lastCall.args[0];
-          assert.equal(lastConfig.mode, 'picture');
-        });
+          .then(() => el.get('mode'))
+          .then(result => {
+            assert.equal(result, 'picture');
+            var lastConfig = mozCamera.setConfiguration.lastCall.args[0];
+            assert.equal(lastConfig.mode, 'picture');
+          });
       });
 
       test('calling several times minimises hardware calls', function() {
@@ -168,11 +236,29 @@ suite('fxos-camera >>', function() {
       });
 
       test('it should fade out before configuring', function() {
-        this.sinon.spy(ViewfinderProto, 'hide');
-
         return el.setMode('video')
           .then(() => {
             assert.ok(ViewfinderProto.hide.calledBefore(mozCamera.setConfiguration));
+          });
+      });
+
+      test('it should update the viewfinder before fading in', function() {
+        return el.setMode('video')
+          .then(() => {
+            assert.ok(ViewfinderProto.update.calledBefore(ViewfinderProto.show));
+          });
+      });
+
+      test('it does not fade in until preview started', function() {
+        var spy = sinon.spy();
+
+        mozCamera.addEventListener('previewstatechange', e => {
+          if (e.newState === 'started') spy(e);
+        });
+
+        return el.setMode('video')
+          .then(() => {
+            assert.ok(ViewfinderProto.show.calledAfter(spy));
           });
       });
     });
@@ -212,8 +298,9 @@ suite('fxos-camera >>', function() {
         el.setCamera('front');
         el.setCamera('back');
         return el.setFlashMode('on')
-          .then(() => {
-            assert.equal(el.camera, 'back');
+          .then(() => el.get('camera'))
+          .then(result => {
+            assert.equal(result, 'back');
             assert.equal(mozCamera.flashMode, 'on');
           });
       });
@@ -247,10 +334,13 @@ suite('fxos-camera >>', function() {
         el.setCamera('front');
         el.setCamera('back');
         return el.set('sceneMode', 'sunset')
-          .then(() => el.get('sceneMode'))
-          .then(result => {
-            assert.equal(el.camera, 'back');
-            assert.equal(result, 'sunset');
+          .then(() => Promise.all([
+            el.get('sceneMode'),
+            el.get('camera'),
+          ]))
+          .then(results => {
+            assert.equal(results[0], 'sunset');
+            assert.equal(results[1], 'back');
             assert.equal(mozCamera.sceneMode, 'sunset');
           });
       });
@@ -275,7 +365,7 @@ suite('fxos-camera >>', function() {
         el.setCamera('front');
         return el.takePicture({ rotation: 90 })
           .then(picture => {
-            assert.equal(el.camera, 'front');
+            assert.equal(picture.camera, 'front');
           });
       });
 
@@ -287,7 +377,7 @@ suite('fxos-camera >>', function() {
           });
       });
 
-      test('roation is mirrored for front camera', function() {
+      test('rotation is mirrored for front camera', function() {
         el.setCamera('front');
         return el.takePicture('my-picture.jpg', { rotation: 90 })
           .then(picture => {
@@ -309,9 +399,36 @@ suite('fxos-camera >>', function() {
         return el.takePicture('foo.jpg')
           .then(picture => {
             assert.isTrue(picture.file instanceof File);
+            assert.ok(picture.absolutePath);
             assert.ok(picture.width);
             assert.ok(picture.height);
             assert.ok(picture.timeStamp);
+          });
+      });
+
+      test('it resumes preview once complete', function() {
+        return el.takePicture('foo.jpg')
+          .then(() => {
+            sinon.assert.calledOnce(mozCamera.resumePreview);
+          });
+      });
+
+      test('it stores the image in DeviceStorage', function() {
+        return el.takePicture('foo.jpg')
+          .then(() => mozCamera.takePicture.lastCall.returnValue)
+          .then(blob => {
+            sinon.assert.calledOnce(deviceStorage.addNamed);
+            sinon.assert.calledWith(deviceStorage.addNamed,
+              blob, 'foo.jpg');
+          });
+      });
+
+      test('it focuses before taking the picture', function() {
+        return el.takePicture('foo.jpg')
+          .then(() => {
+            sinon.assert.calledOnce(mozCamera.autoFocus);
+            sinon.assert.calledOnce(mozCamera.takePicture);
+            assert.isTrue(mozCamera.autoFocus.calledBefore(mozCamera.takePicture));
           });
       });
     });
@@ -451,7 +568,7 @@ suite('fxos-camera >>', function() {
         });
       });
 
-      test('it\'s stopped when .teardown() is called', function() {
+      test('it\'s stopped when .stop() is called', function() {
 
       });
     });
@@ -470,13 +587,13 @@ suite('fxos-camera >>', function() {
     });
 
     suite('#teardown()', function() {
-      test('able to .setup() again after .teardown()', function() {
+      test('able to .start() again after .stop()', function() {
         var video = el.shadowRoot.querySelector('video');
 
-        return el.teardown()
+        return el.stop()
           .then(() => {
             MozCameraProto.streamInto.reset();
-            return el.setup();
+            return el.start();
           })
 
           .then(() => {
@@ -613,6 +730,35 @@ suite('fxos-camera >>', function() {
           });
         });
       });
+
+      suite('focus on point', function() {
+        test.skip('it converts the point to camera co-ordinates', function() {
+
+          mozCamera.setFocusAreas.reset();
+          var viewfinder = el.shadowRoot.querySelector('.frame');
+          var rect = viewfinder.getBoundingClientRect();
+
+          var x = rect.x + (rect.width * 0.75);
+          var y = rect.y + (rect.height * 0.75);
+
+          return el.focus({ clientX: x, clientY: y })
+            .then(() => {
+              var rect = mozCamera.setFocusAreas.args[0][0][0];
+              console.log('XXX', rect);
+              sinon.assert.calledOnce(mozCamera.setFocusAreas);
+              assert.deepEqual(rect, {
+                x: 468.75,
+                y: -476.56250111758703,
+                left: 468.75,
+                top: -476.56250111758703,
+                right: 531.25,
+                bottom: 539.0625011175871,
+                width: 62.5,
+                height: 62.5
+              });
+            });
+        });
+      });
     });
 
     suite('get()', function() {
@@ -646,7 +792,7 @@ suite('fxos-camera >>', function() {
           .then(() => {
             el.remove();
             el = create();
-            return el.complete;
+            return el.started;
           })
 
           .then(() => el.get('pictureSize'))
@@ -685,6 +831,51 @@ suite('fxos-camera >>', function() {
           .then(result => {
             assert.equal(result, 'off');
           });
+      });
+    });
+
+    suite('`visibilitychange`', function() {
+      var hidden = false;
+      var HiddenDescriptor = getDescriptor(Document.prototype, 'hidden');
+      var visibilityChange = function() {
+        document.dispatchEvent(new CustomEvent('visibilitychange'));
+      };
+
+      setup(function() {
+        Object.defineProperty(Document.prototype, 'hidden', {
+          get() {
+            console.log('HIDDEN', hidden);
+            return hidden; }
+        });
+      });
+
+      teardown(function() {
+        Object.defineProperty(Document.prototype, 'hidden', HiddenDescriptor);
+      });
+
+      suite('app hidden', function() {
+        setup(function() {
+          hidden = true;
+          visibilityChange();
+          return el.stopped;
+        });
+
+        test('it releases the hardware when the document is hidden', function() {
+          sinon.assert.calledOnce(mozCamera.release);
+        });
+
+        suite('app shown again', function() {
+          setup(function() {
+            navigator.mozCameras.getCamera.reset();
+            hidden = false;
+            visibilityChange();
+            return el.started;
+          });
+
+          test('it sets up the camera again', function() {
+            sinon.assert.calledOnce(navigator.mozCameras.getCamera);
+          });
+        });
       });
     });
   });
