@@ -2,14 +2,18 @@
 /*jshint maxlen:false*/
 
 window.MockMozCamera = (function() {
+  var id = 0;
 
   function MockMozCamera(camera, config) {
+    this.id = ++id;
     this.sensorAngle = 270;
     this.flashMode = 'auto';
     this.sceneMode = 'auto';
     this.effect = 'none';
 
+    this.camera = camera;
     this.capabilities = capabilities.flame[camera];
+    this.zoom = this.capabilities.zoomRatios[0];
     this.emitter = document.createElement('div');
 
     var pictureSize;
@@ -45,11 +49,14 @@ window.MockMozCamera = (function() {
     };
 
     sinon.spy(this, 'setThumbnailSize');
+    sinon.spy(this, 'addEventListener');
+    sinon.spy(this, 'removeEventListener');
     sinon.spy(this, 'startFaceDetection');
     sinon.spy(this, 'stopFaceDetection');
     sinon.spy(this, 'setConfiguration');
     sinon.spy(this, 'startRecording');
     sinon.spy(this, 'setFocusAreas');
+    sinon.spy(this, 'getFocusAreas');
     sinon.spy(this, 'stopRecording');
     sinon.spy(this, 'resumePreview');
     sinon.spy(this, 'takePicture');
@@ -109,10 +116,18 @@ window.MockMozCamera = (function() {
 
     autoFocus() {
       var defer = new Deferred();
-      setTimeout(() => defer.resolve(), 100);
+      requestAnimationFrame(() => defer.resolve(), 100);
       return defer.promise;
     },
-    setFocusAreas() {},
+
+    setFocusAreas(value) {
+      this.focusAreas = value;
+    },
+
+    getFocusAreas() {
+      return this.focusAreas || [];
+    },
+
     setMeteringAreas() {},
 
     emit(name, data) {

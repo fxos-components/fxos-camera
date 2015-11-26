@@ -372,7 +372,10 @@ Internal.prototype = {
 
   takePicture(filePath, options) {
     return this.loaded()
-      .then(() => this.camera.takePicture(filePath, options));
+      .then(() => {
+        if (!filePath) throw error(1);
+        return this.camera.takePicture(filePath, options);
+      });
   },
 
   startRecording(options) {
@@ -444,9 +447,34 @@ Internal.prototype = {
     debug('set flash mode', value);
     this.flashMode = value;
     return this.loaded()
-      .then(() => {
-        return this.camera.setFlashMode(this.flashMode); })
+      .then(() => this.camera.setFlashMode(this.flashMode))
       .then(result => this.flashMode = result);
+  },
+
+  setHdrMode(value) {
+    debug('set flash mode', value);
+    this.hdrMode = value;
+    return this.loaded()
+      .then(() => this.camera.setHdrMode(this.hdrMode))
+      .then(result => this.hdrMode = result);
+  },
+
+  setZoom(value) {
+    debug('set zoom', value);
+    this.zoom = value;
+    return this.loaded()
+      .then(() => this.camera.setZoom(value))
+      .then(result => {
+        debug('zoom set', result, value, this.zoom);
+
+        // FIXME: This is a bit gross
+        if (this.zoom !== value || result.input !== value) {
+          debug('zoom since changed', this.zoom);
+          return this.setZoom(this.zoom);
+        }
+
+        return this.zoom = result.value;
+      });
   },
 
   setEffect() {},
@@ -492,8 +520,10 @@ Internal.prototype = {
       case 'maxFileSize': return this.setMaxFileSize(value);
       case 'sceneMode': return this.setSceneMode(value);
       case 'flashMode': return this.setFlashMode(value);
+      case 'hdrMode': return this.setHdrMode(value);
       case 'camera': return this.setType(value);
       case 'mode': return this.setMode(value);
+      case 'zoom': return this.setZoom(value);
       default: return Promise.reject(new Error('unknown setting'));
     }
   },
@@ -605,6 +635,20 @@ function rotatePoint(x, y, angle) {
     case 180: case -180: return { x: -x, y: -y };
     case 270: case -90: return { x: -y, y: x };
   }
+}
+
+/**
+ * Creates new `Error` from registery.
+ *
+ * @param  {Number} id Error Id
+ * @return {Error}
+ * @private
+ */
+function error(id, ...args) {
+  /*jshint maxlen:false*/
+  return new Error({
+    1: `please provide a path (eg. 'path/to/my-image.jpg')`
+  }[id]);
 }
 
 })})(((n1,n2,w)=>{return(typeof define)[0]=='f'&&define.amd?define:(typeof module)[0]=='o'?c =>{c(require,exports,module)}:c=>{var m={exports:{}},r=n=>w[n];w[n1]=w[n2]=c(r,m.exports,m)||m.exports;};})('fxos-camera','FXOSCamera',this));/*jshint ignore:line*/

@@ -11,7 +11,11 @@ camera.started.then(() => {
 }).catch(e => console.error(e));
 
 camera.addEventListener('click', camera.focus.bind(camera));
-
+controls.addEventListener('click', e => {
+  camera.takePicture()
+    .then(picture => console.log('PICTURE', picture))
+    .catch(err => console.error(err));
+});
 
 function updateControls() {
   camera.get('viewfinderSize')

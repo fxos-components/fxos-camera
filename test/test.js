@@ -360,6 +360,70 @@ suite('fxos-camera >>', function() {
       });
     });
 
+    suite('HDR', function() {
+      setup(function() {
+        capabilities.flame.back.sceneModes.push('hdr');
+      });
+
+      teardown(function() {
+        var index = capabilities.flame.back.sceneModes.indexOf('hdr');
+        capabilities.flame.back.sceneModes.splice(index, 1);
+      });
+
+      suite('get `hdrModes`', function() {
+        test('returns mode options when camera supports HDR', function() {
+          return el.get('hdrModes')
+            .then(result => {
+              assert.deepEqual(result, ['on', 'off']);
+              return el.set('camera', 'front');
+            })
+
+            .then(() => el.get('hdrModes'))
+            .then(result => {
+              assert.equal(result, undefined);
+            });
+        });
+      });
+
+      suite('set `hdrMode`', function() {
+        test('sceneMode is `null` when HDR is `on`', function() {
+          return el.set('sceneMode', 'landscape')
+            .then(() => el.get('sceneMode'))
+            .then(result => {
+              assert.equal(result, 'landscape');
+              return el.set('hdrMode', 'on');
+            })
+
+            .then(result => {
+              assert.equal(result, 'on');
+              return el.get('sceneMode');
+            })
+
+            .then(result => {
+              assert.isNull(result);
+            });
+        });
+
+        test('it reverts to last `sceneMode` when turned back `off`', function() {
+          return el.set('sceneMode', 'landscape')
+            .then(result => {
+              assert.equal(result, 'landscape');
+              return el.set('hdrMode', 'on');
+            })
+
+            .then(() => el.set('hdrMode', 'off'))
+            .then(result => {
+              assert.equal(result, 'off');
+              return el.get('sceneMode');
+            })
+
+            .then(result => {
+              assert.equal(result, 'landscape');
+            });
+        });
+      });
+    });
+
     suite('#takePicture()', function() {
       test('it waits until camera is \'ready\'', function() {
         el.setCamera('front');
@@ -431,6 +495,74 @@ suite('fxos-camera >>', function() {
             assert.isTrue(mozCamera.autoFocus.calledBefore(mozCamera.takePicture));
           });
       });
+
+      test('it stops all focus while picture is being taken', function() {
+        mozCamera.removeEventListener.reset();
+        mozCamera.startFaceDetection.reset();
+
+        return el.takePicture('foo.jpg')
+          .then(() => {
+            sinon.assert.calledOnce(mozCamera.stopFaceDetection);
+            sinon.assert.calledWith(mozCamera.removeEventListener, 'focus');
+
+            assert.isTrue(
+              mozCamera.stopFaceDetection
+                .calledBefore(mozCamera.takePicture));
+
+            sinon.assert.calledOnce(mozCamera.startFaceDetection);
+
+            assert.isTrue(
+              mozCamera.startFaceDetection
+                .calledAfter(mozCamera.takePicture));
+
+            sinon.assert.calledWith(mozCamera.addEventListener, 'focus');
+          });
+      });
+
+      test('it throws if no file-path is given', function() {
+        return el.takePicture()
+          .catch(err => {
+            assert.ok(err instanceof Error);
+          });
+      });
+    });
+
+    suite('zoom >>', function() {
+      test('getMaxZoom', function() {
+        return el.get('maxZoom')
+          .then(result => assert.equal(result, 6.06))
+          .then(() => el.set('camera', 'front'))
+          .then(() => el.get('maxZoom'))
+          .then(result => assert.equal(result, 6.06));
+      });
+
+      suite('set zoom >>', function() {
+        test('it sets the value on the mozCamera', function() {
+          return el.set('zoom', 2)
+            .then(() => {
+              assert.equal(mozCamera.zoom, 2);
+            });
+        });
+
+        test('it clamps within range', function() {
+          return el.set('zoom', 10)
+            .then(result => assert.equal(result, 6.06))
+            .then(() => el.set('zoom', -5))
+            .then(result => assert.equal(result, 1));
+        });
+
+        test('it can be hammered', function() {
+          return Promise.all([
+              el.set('zoom', 2),
+              el.set('zoom', 3),
+              el.set('zoom', 4)
+            ])
+
+            .then(result => {
+              assert.deepEqual(result, [4, 4, 4]);
+            });
+        });
+      });
     });
 
     suite('thumbnail size >>', function() {
@@ -458,10 +590,11 @@ suite('fxos-camera >>', function() {
       test('it sets a thumbnail size when the camera changes', function() {
         var expected = { height: 480, width: 640 };
         mozCamera.setThumbnailSize.reset();
-        return el.setCamera('front')
+        return el.set('camera', 'front')
           .then(() => {
             sinon.assert.calledWith(mozCamera.setThumbnailSize, expected);
             assert.deepEqual(mozCamera.thumbnailSize, expected);
+            return el.set('camera', 'back');
           });
       });
     });
@@ -586,7 +719,7 @@ suite('fxos-camera >>', function() {
       });
     });
 
-    suite('#teardown()', function() {
+    suite('#stop()', function() {
       test('able to .start() again after .stop()', function() {
         var video = el.shadowRoot.querySelector('video');
 
@@ -627,36 +760,6 @@ suite('fxos-camera >>', function() {
           });
       });
 
-      test('can define a function to dynamically define scaleType', function() {
-        var wrapper = el.shadowRoot.querySelector('.wrapper');
-        var size;
-
-        el.scaleType = sizes => {
-          size = sizes.fit;
-          return 'fit';
-        };
-
-        return el.setCamera('front')
-          .then(() => {
-            assert.equal(wrapper.clientWidth, Math.round(size.width));
-            assert.equal(wrapper.clientHeight, Math.round(size.height));
-          })
-
-          .then(() => {
-            el.scaleType = sizes => {
-              size = sizes.fill;
-              return 'fill';
-            };
-
-            return el.setCamera('back');
-          })
-
-          .then(() => {
-            assert.equal(wrapper.clientWidth, Math.round(size.width));
-            assert.equal(wrapper.clientHeight, Math.round(size.height));
-          });
-      });
-
       test('face elements match maxFaceCount', function() {
         var faces = el.querySelectorAll('.face');
         assert.equal(faces.length, mozCamera.capabilities.maxDetectedFaces);
@@ -688,52 +791,62 @@ suite('fxos-camera >>', function() {
             });
         });
 
-        suite('2 faces detected', function() {
+        suite('2 faces detected >>', function() {
           setup(function() {
             this.sinon.stub(window, 'requestAnimationFrame');
+            this.sinon.useFakeTimers();
             mozCamera.emit('facesdetected', { faces: MockMozCamera.faces });
             window.requestAnimationFrame.yield();
           });
 
-          test('it places the faces in the right place', function() {
-            var faces = Array.from(el.querySelectorAll('.face'));
-            var visible = 0;
-
-            faces.forEach(el => {
-              var visibility = getComputedStyle(el).visibility;
-              if (visibility === 'visible') visible++;
-            });
-
-            assert.equal(visible, 2);
+          teardown(function() {
+            this.sinon.clock.restore();
           });
 
-          suite('1 face detected', function() {
+          test('it displays the correct number of faces', function() {
+            var faces = Array.from(el.querySelectorAll('.face'));
+            var active = faces.filter(el => el.classList.contains('active'));
+
+            assert.equal(active.length, 2);
+          });
+
+          test('it set the focus-area to the largest face', function() {
+            var area = mozCamera.setFocusAreas.lastCall.args[0][0];
+            var expected = MockMozCamera.faces[0].bounds;
+            assert.equal(area, expected);
+          });
+
+          suite('1 face detected >>', function() {
             setup(function() {
-              mozCamera.emit('facesdetected', {
-                faces: [MockMozCamera.faces[0]]
-              });
+              mozCamera.emit('facesdetected', { faces: [MockMozCamera.faces[0]] });
             });
 
-            test('it places the faces in the right place', function() {
+            test('it displays the correct number of faces', function() {
+              var faces = Array.from(el.querySelectorAll('.face'));
+              var active = faces.filter(el => el.classList.contains('active'));
 
+              assert.equal(active.length, 1);
             });
 
-            suite('no faces detected', function() {
+            suite('no faces detected (timeout)', function() {
               setup(function() {
-                mozCamera.emit('facesdetected', { faces: [] });
+                this.sinon.clock.tick(1000);
               });
 
-              test('it places the faces in the right place', function() {
+              test('after two seconds of no detected faces, it clears', function() {
+                var faces = Array.from(el.querySelectorAll('.face'));
+                var active = faces.filter(el => el.classList.contains('active'));
 
+                assert.equal(active.length, 0);
               });
             });
           });
         });
       });
 
-      suite('focus on point', function() {
-        test.skip('it converts the point to camera co-ordinates', function() {
-
+      suite('focus on point >>', function() {
+        setup(function() {
+          this.sinon.useFakeTimers();
           mozCamera.setFocusAreas.reset();
           var viewfinder = el.shadowRoot.querySelector('.frame');
           var rect = viewfinder.getBoundingClientRect();
@@ -741,22 +854,51 @@ suite('fxos-camera >>', function() {
           var x = rect.x + (rect.width * 0.75);
           var y = rect.y + (rect.height * 0.75);
 
-          return el.focus({ clientX: x, clientY: y })
-            .then(() => {
-              var rect = mozCamera.setFocusAreas.args[0][0][0];
-              console.log('XXX', rect);
-              sinon.assert.calledOnce(mozCamera.setFocusAreas);
-              assert.deepEqual(rect, {
-                x: 468.75,
-                y: -476.56250111758703,
-                left: 468.75,
-                top: -476.56250111758703,
-                right: 531.25,
-                bottom: 539.0625011175871,
-                width: 62.5,
-                height: 62.5
-              });
+          return el.focus({ clientX: x, clientY: y });
+        });
+
+        teardown(function() {
+          this.sinon.clock.restore();
+        });
+
+        test('focus-area is set on the mozCamera', function() {
+            var rect = mozCamera.setFocusAreas.args[0][0][0];
+            sinon.assert.calledOnce(mozCamera.setFocusAreas);
+              // assert.deepEqual(rect, {
+              //   x: 468.75,
+              //   y: -476.56250111758703,
+              //   left: 468.75,
+              //   top: -476.56250111758703,
+              //   right: 531.25,
+              //   bottom: 539.0625011175871,
+              //   width: 62.5,
+              //   height: 62.5
+              // });
+            // });
+        });
+
+        test('it turns off continuous-auto-focus', function() {
+          assert.equal(mozCamera.focusMode, 'auto');
+        });
+
+        suite('after 5sec', function() {
+          setup(function() {
+            this.sinon.clock.tick(5000);
+          });
+
+          test('continuous-auto-focus remains off', function() {
+            assert.equal(mozCamera.focusMode, 'auto');
+          });
+
+          suite('after 10sec', function() {
+            setup(function() {
+              this.sinon.clock.tick(5000);
             });
+
+            test('returns to continuous-auto-focus', function() {
+              assert.equal(mozCamera.focusMode, 'continuous-picture');
+            });
+          });
         });
       });
     });
