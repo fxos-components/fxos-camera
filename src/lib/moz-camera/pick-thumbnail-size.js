@@ -2,7 +2,7 @@
 
 var debug = 0 ? (...args) => console.log('[pick-thumbnail]', ...args) : ()=> {};
 
-var screen = {
+var viewport = {
   width: parent.innerWidth * window.devicePixelRatio,
   height: parent.innerHeight * window.devicePixelRatio
 };
@@ -42,7 +42,7 @@ module.exports = function(sizes, pictureSize) {
   // Find the smallest size that fills the screen
   for (var i = 0; i < sizes.length; ++i) {
     var size = sizes[i];
-    if (fillsScreen(size.width, size.height)) return size;
+    if (fillsViewport(size.width, size.height)) return size;
   }
 
   // Last resort: choose the largest
@@ -53,7 +53,7 @@ module.exports = function(sizes, pictureSize) {
  * Utils
  */
 
-function fillsScreen(pixelsWidth, pixelsHeight) {
-  return (pixelsWidth >= screen.width || pixelsHeight >= screen.height)
-    && (pixelsWidth >= screen.height || pixelsHeight >= screen.width);
+function fillsViewport(pixelsWidth, pixelsHeight) {
+  return (pixelsWidth >= viewport.width || pixelsHeight >= viewport.height)
+    && (pixelsWidth >= viewport.height || pixelsHeight >= viewport.width);
 }

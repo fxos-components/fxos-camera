@@ -44,14 +44,14 @@ Viewfinder.prototype = {
     var sensorAngle = camera.sensorAngle;
     var container = this.getContainerGeometry(sensorAngle);
     var previewSize = camera.previewSize;
-    var sized = scaleTo.fit(container, previewSize);
+    var sized = fit(container, previewSize);
     var covers = sized.area / container.area;
 
     // if the fitted size covers more than
     // 90% of the container then instead
     // scale to fill as this is prettier.
     if (covers > 0.9) {
-      sized = scaleTo.fill(container, previewSize);
+      sized = fill(container, previewSize);
       covers = sized.area / container.area;
     }
 
@@ -270,13 +270,6 @@ Viewfinder.prototype = {
     return this.el.flush
       ? parent.innerHeight
       : this.el.clientHeight;
-  },
-
-  pickScaleType(sizes) {
-    debug('get scale type', sizes);
-    return typeof this.el.scaleType === 'function'
-      ? this.el.scaleType(sizes)
-      : this.el.scaleType || 'fit';
   }
 };
 
@@ -284,44 +277,42 @@ Viewfinder.prototype = {
  * Utils
  */
 
-var scaleTo = {
-  fill(container, image) {
-    debug('scaleTo fill', container, image);
-    var sw = container.width / image.width;
-    var sh = container.height / image.height;
+function fill(container, image) {
+  debug('scaleTo fill', container, image);
+  var sw = container.width / image.width;
+  var sh = container.height / image.height;
 
-    // Select the larger scale to fill
-    // and overflow viewport with image
-    var scale = Math.max(sw, sh);
+  // Select the larger scale to fill
+  // and overflow viewport with image
+  var scale = Math.max(sw, sh);
 
-    var w = image.width * scale;
-    var h = image.height * scale;
+  var w = image.width * scale;
+  var h = image.height * scale;
 
-    return {
-      width: w,
-      height: h,
-      area: w * h
-    };
-  },
+  return {
+    width: w,
+    height: h,
+    area: w * h
+  };
+}
 
-  fit(container, image) {
-    var sw = container.width / image.width;
-    var sh = container.height / image.height;
+function fit(container, image) {
+  var sw = container.width / image.width;
+  var sh = container.height / image.height;
 
-    // Select the smaller scale to fit image
-    // completely within the viewport
-    var scale = Math.min(sw, sh);
+  // Select the smaller scale to fit image
+  // completely within the viewport
+  var scale = Math.min(sw, sh);
 
-    var w = image.width * scale;
-    var h = image.height * scale;
+  var w = image.width * scale;
+  var h = image.height * scale;
 
-    return {
-      width: w,
-      height: h,
-      area: w * h
-    };
-  }
-};
+  return {
+    width: w,
+    height: h,
+    area: w * h
+  };
+}
 
 function once(el, name, fn, max) {
   var timeout = setTimeout(fn, max);
