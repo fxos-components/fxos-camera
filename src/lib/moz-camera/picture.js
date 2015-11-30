@@ -5,7 +5,7 @@
  *
  * @type {Funciton}
  */
-var debug = 1 ? (...args) => console.log('[Picture]', ...args) : () => {};
+var debug = 0 ? (...args) => console.log('[Picture]', ...args) : () => {};
 
 /**
  * Key to store 'private' stuff behind

@@ -1,6 +1,6 @@
 (function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.FXOSCamera = f()}})(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 /* globals define */
-;(function(define){'use strict';define(function(require,exports,module){
+;(function(define){define(function(require,exports,module){
 /**
  * Locals
  */
@@ -10,6 +10,156 @@ var innerHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
 var removeAttribute = Element.prototype.removeAttribute;
 var setAttribute = Element.prototype.setAttribute;
 var noop  = function() {};
+
+var base = {
+  properties: {
+    GaiaComponent: true,
+    attributeChanged: noop,
+    attached: noop,
+    detached: noop,
+    created: noop,
+
+    createdCallback: function() {
+      if (this.dirObserver) { addDirObserver(); }
+      injectLightCss(this);
+      this.created();
+    },
+
+    /**
+     * It is very common to want to keep object
+     * properties in-sync with attributes,
+     * for example:
+     *
+     *   el.value = 'foo';
+     *   el.setAttribute('value', 'foo');
+     *
+     * So we support an object on the prototype
+     * named 'attrs' to provide a consistent
+     * way for component authors to define
+     * these properties. When an attribute
+     * changes we keep the attr[name]
+     * up-to-date.
+     *
+     * @param  {String} name
+     * @param  {String||null} from
+     * @param  {String||null} to
+     */
+    attributeChangedCallback: function(name, from, to) {
+      var prop = toCamelCase(name);
+      if (this._attrs && this._attrs[prop]) { this[prop] = to; }
+      this.attributeChanged(name, from, to);
+    },
+
+    attachedCallback: function() {
+      if (this.dirObserver) {
+        this.setInnerDirAttributes = setInnerDirAttributes.bind(null, this);
+        document.addEventListener('dirchanged', this.setInnerDirAttributes);
+      }
+      this.attached();
+    },
+
+    detachedCallback: function() {
+      if (this.dirObserver) {
+        document.removeEventListener('dirchanged', this.setInnerDirAttributes);
+      }
+
+      if (document.l10n && this.onDOMRetranslated) {
+        document.l10n.ready.then(() => document.removeEventListener(
+          'DOMRetranslated', this.onDOMRetranslated));
+      }
+
+      this.detached();
+    },
+
+    /**
+     * A convenient method for setting up
+     * a shadow-root using the defined template.
+     *
+     * @return {ShadowRoot}
+     */
+    setupShadowRoot: function() {
+      if (!this.template) { return; }
+      var node = document.importNode(this.template.content, true);
+      this.createShadowRoot().appendChild(node);
+      if (this.dirObserver) { setInnerDirAttributes(this); }
+      return this.shadowRoot;
+    },
+
+    /**
+     * A convenient method for triggering l10n for component's shadow DOM.
+     */
+    setupShadowL10n: function() {
+      if (!document.l10n) { return this.localizeShadow(this.shadowRoot); }
+
+      this.onDOMRetranslated = this.localizeShadow.bind(null, this.shadowRoot);
+      document.l10n.ready.then(() => {
+        document.addEventListener('DOMRetranslated', this.onDOMRetranslated);
+        this.localizeShadow(this.shadowRoot);
+      });
+    },
+
+    /**
+     * Localizes the shadowRoot subtree.
+     */
+    localizeShadow: function(shadowRoot) {
+      if (!document.l10n) { return; }
+
+      document.l10n.translateFragment(shadowRoot);
+    },
+
+    /**
+     * Sets an attribute internally
+     * and externally. This is so that
+     * we can style internal shadow-dom
+     * content.
+     *
+     * @param {String} name
+     * @param {String} value
+     */
+    setAttr: function(name, value) {
+      var internal = this.shadowRoot.firstElementChild;
+      setAttribute.call(internal, name, value);
+      setAttribute.call(this, name, value);
+    },
+
+    /**
+     * Removes an attribute internally
+     * and externally. This is so that
+     * we can style internal shadow-dom
+     * content.
+     *
+     * @param {String} name
+     * @param {String} value
+     */
+    removeAttr: function(name) {
+      var internal = this.shadowRoot.firstElementChild;
+      removeAttribute.call(internal, name);
+      removeAttribute.call(this, name);
+    }
+  },
+
+  descriptors: {
+    textContent: {
+      set: function(value) {
+        textContent.set.call(this, value);
+        if (this.lightStyle) { this.appendChild(this.lightStyle); }
+      },
+
+      get: function() {
+        return textContent.get();
+      }
+    },
+
+    innerHTML: {
+      set: function(value) {
+        innerHTML.set.call(this, value);
+        if (this.lightStyle) { this.appendChild(this.lightStyle); }
+      },
+
+      get: innerHTML.get
+    }
+  }
+};
 
 /**
  * Register a new component.
@@ -75,128 +225,6 @@ exports.register = function(name, props) {
   } catch (e) {
     if (e.name !== 'NotSupportedError') {
       throw e;
-    }
-  }
-};
-
-var base = {
-  properties: {
-    GaiaComponent: true,
-    attributeChanged: noop,
-    attached: noop,
-    detached: noop,
-    created: noop,
-
-    createdCallback: function() {
-      if (this.dirObserver) { addDirObserver(); }
-      injectLightCss(this);
-      this.created();
-    },
-
-    /**
-     * It is very common to want to keep object
-     * properties in-sync with attributes,
-     * for example:
-     *
-     *   el.value = 'foo';
-     *   el.setAttribute('value', 'foo');
-     *
-     * So we support an object on the prototype
-     * named 'attrs' to provide a consistent
-     * way for component authors to define
-     * these properties. When an attribute
-     * changes we keep the attr[name]
-     * up-to-date.
-     *
-     * @param  {String} name
-     * @param  {String||null} from
-     * @param  {String||null} to
-     */
-    attributeChangedCallback: function(name, from, to) {
-      var prop = toCamelCase(name);
-      if (this._attrs && this._attrs[prop]) { this[prop] = to; }
-      this.attributeChanged(name, from, to);
-    },
-
-    attachedCallback: function() {
-      if (this.dirObserver) {
-        this.setInnerDirAttributes = setInnerDirAttributes.bind(null, this);
-        document.addEventListener('dirchanged', this.setInnerDirAttributes);
-      }
-      this.attached();
-    },
-
-    detachedCallback: function() {
-      if (this.dirObserver) {
-        document.removeEventListener('dirchanged', this.setInnerDirAttributes);
-      }
-      this.detached();
-    },
-
-    /**
-     * A convenient method for setting up
-     * a shadow-root using the defined template.
-     *
-     * @return {ShadowRoot}
-     */
-    setupShadowRoot: function() {
-      if (!this.template) { return; }
-      var node = document.importNode(this.template.content, true);
-      this.createShadowRoot().appendChild(node);
-      if (this.dirObserver) { setInnerDirAttributes(this); }
-      return this.shadowRoot;
-    },
-
-    /**
-     * Sets an attribute internally
-     * and externally. This is so that
-     * we can style internal shadow-dom
-     * content.
-     *
-     * @param {String} name
-     * @param {String} value
-     */
-    setAttr: function(name, value) {
-      var internal = this.shadowRoot.firstElementChild;
-      setAttribute.call(internal, name, value);
-      setAttribute.call(this, name, value);
-    },
-
-    /**
-     * Removes an attribute internally
-     * and externally. This is so that
-     * we can style internal shadow-dom
-     * content.
-     *
-     * @param {String} name
-     * @param {String} value
-     */
-    removeAttr: function(name) {
-      var internal = this.shadowRoot.firstElementChild;
-      removeAttribute.call(internal, name);
-      removeAttribute.call(this, name);
-    }
-  },
-
-  descriptors: {
-    textContent: {
-      set: function(value) {
-        textContent.set.call(this, value);
-        if (this.lightStyle) { this.appendChild(this.lightStyle); }
-      },
-
-      get: function() {
-        return textContent.get();
-      }
-    },
-
-    innerHTML: {
-      set: function(value) {
-        innerHTML.set.call(this, value);
-        if (this.lightStyle) { this.appendChild(this.lightStyle); }
-      },
-
-      get: innerHTML.get
     }
   }
 };
@@ -525,32 +553,12 @@ var FXOSCameraPrototype = {
     return this[internal].stop();
   },
 
-  setCamera(value) {
-    return this[internal].setCamera(value);
-  },
-
-  setMode(value) {
-    return this[internal].setMode(value);
-  },
-
-  setFlashMode(value) {
-    return this[internal].setFlashMode(value);
-  },
-
-  setPictureSize(value) {
-    return this[internal].setPictureSize(value);
-  },
-
   get(value) {
     return this[internal].get(value);
   },
 
   set(key, value) {
     return this[internal].set(key, value);
-  },
-
-  setSceneMode(value) {
-    return this[internal].setSceneMode(value);
   },
 
   takePicture(filePath, options) {
@@ -2787,7 +2795,7 @@ function fillsViewport(pixelsWidth, pixelsHeight) {
  *
  * @type {Funciton}
  */
-var debug = 1 ? (...args) => console.log('[Picture]', ...args) : () => {};
+var debug = 0 ? (...args) => console.log('[Picture]', ...args) : () => {};
 
 /**
  * Key to store 'private' stuff behind

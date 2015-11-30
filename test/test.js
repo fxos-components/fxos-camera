@@ -175,16 +175,16 @@ suite('fxos-camera >>', function() {
         .then(value => assert.equal(value, 'auto'));
     });
 
-    suite('#setCamera()', function() {
+    suite('changing cameras', function() {
       test('it can be hammered like hell', function() {
         return new Promise((resolve, reject) => {
           navigator.mozCameras.getCamera.reset();
           setTimeout(() => {
-            el.setCamera('front');
+            el.set('camera', 'front');
             setTimeout(() => {
-              el.setCamera('back');
+              el.set('camera', 'back');
               setTimeout(() => {
-                el.setCamera('front')
+                el.set('camera', 'front')
                   .then(() => el.get('camera'))
                   .then(result => {
                     assert.equal(result, 'front');
@@ -199,20 +199,20 @@ suite('fxos-camera >>', function() {
       });
     });
 
-    suite('#setMode()', function() {
+    suite(`#set('mode', ...)`, function() {
       setup(function() {
         this.sinon.spy(ViewfinderProto, 'update');
         this.sinon.spy(ViewfinderProto, 'show');
         this.sinon.spy(ViewfinderProto, 'hide');
       });
 
-      test('it can be called straight after .setCamera()', function() {
-        el.setCamera('front');
-        return el.setMode('video')
+      test(`it can be called straight after .set('camera', ...)`, function() {
+        el.set('camera', 'front');
+        return el.set('mode', 'video')
           .then(() => el.get('mode'))
           .then(result => {
             assert.equal(result, 'video');
-            return el.setMode('picture');
+            return el.set('mode', 'picture');
           })
 
           .then(() => el.get('mode'))
@@ -225,11 +225,11 @@ suite('fxos-camera >>', function() {
 
       test('calling several times minimises hardware calls', function() {
         return Promise.all([
-            el.setMode('video'),
-            el.setMode('picture'),
-            el.setMode('video'),
-            el.setMode('picture'),
-            el.setMode('video')
+            el.set('mode', 'video'),
+            el.set('mode', 'picture'),
+            el.set('mode', 'video'),
+            el.set('mode', 'picture'),
+            el.set('mode', 'video')
           ])
 
           .then(() => {
@@ -239,14 +239,14 @@ suite('fxos-camera >>', function() {
       });
 
       test('it should fade out before configuring', function() {
-        return el.setMode('video')
+        return el.set('mode', 'video')
           .then(() => {
             assert.ok(ViewfinderProto.hide.calledBefore(mozCamera.setConfiguration));
           });
       });
 
       test('it should update the viewfinder before fading in', function() {
-        return el.setMode('video')
+        return el.set('mode', 'video')
           .then(() => {
             assert.ok(ViewfinderProto.update.calledBefore(ViewfinderProto.show));
           });
@@ -259,14 +259,14 @@ suite('fxos-camera >>', function() {
           if (e.newState === 'started') spy(e);
         });
 
-        return el.setMode('video')
+        return el.set('mode', 'video')
           .then(() => {
             assert.ok(ViewfinderProto.show.calledAfter(spy));
           });
       });
 
       test('it throws for unknown modes', function() {
-        return el.setMode('wilson')
+        return el.set('mode', 'wilson')
           .then(() => assert.ok(false, 'should throw'))
           .catch(err => assert.include(err.message, 'invalid mode'));
       });
@@ -274,7 +274,7 @@ suite('fxos-camera >>', function() {
       test('it throws when video recording is in progress', function() {
         return el.set('mode', 'video')
           .then(() => el.startRecording('foo.3gp'))
-          .then(() => el.setMode('picture'))
+          .then(() => el.set('mode', 'picture'))
           .then(() => assert.ok(false, 'should throw'))
           .catch(err => assert.include(err.message, 'in progress'));
       });
@@ -285,8 +285,8 @@ suite('fxos-camera >>', function() {
         var frame = el.shadowRoot.querySelector('.frame');
         var count = 2;
 
-        el.setMode('video').then(complete).catch(done);
-        el.setCamera('front').then(complete).catch(done);
+        el.set('mode', 'video').then(complete).catch(done);
+        el.set('camera', 'front').then(complete).catch(done);
 
         function complete() {
           var opacity = frame.style.opacity;
@@ -499,7 +499,7 @@ suite('fxos-camera >>', function() {
       suite('set >>', function() {
 
         test('it sets the flashMode on the moz camera', function() {
-          return el.setFlashMode('on')
+          return el.set('flashMode', 'on')
             .then(() => el.get('flashMode'))
             .then(result => {
               assert.equal(result, 'on');
@@ -507,10 +507,10 @@ suite('fxos-camera >>', function() {
             });
         });
 
-        test('it can be called directly after .setCamera()', function() {
-          el.setCamera('front');
-          el.setCamera('back');
-          return el.setFlashMode('on')
+        test(`it can be called directly after .set('camera', ...)`, function() {
+          el.set('camera', 'front');
+          el.set('camera', 'back');
+          return el.set('flashMode', 'on')
             .then(() => el.get('camera'))
             .then(result => {
               assert.equal(result, 'back');
@@ -543,7 +543,7 @@ suite('fxos-camera >>', function() {
         });
 
         test('the flash mode persists between components', function() {
-          return el.setFlashMode('off')
+          return el.set('flashMode', 'off')
             .then(() => {
               el.remove();
               el = create();
@@ -616,9 +616,9 @@ suite('fxos-camera >>', function() {
           });
       });
 
-      test('it can be called directly after .setCamera()', function() {
-        el.setCamera('front');
-        el.setCamera('back');
+      test(`it can be called directly after .set('camera', ...)`, function() {
+        el.set('camera', 'front');
+        el.set('camera', 'back');
         return el.set('sceneMode', 'sunset')
           .then(() => Promise.all([
             el.get('sceneMode'),
@@ -632,11 +632,11 @@ suite('fxos-camera >>', function() {
       });
 
       test('it fails silently if value unknown', function() {
-        return el.setSceneMode('sports')
+        return el.set('sceneMode', 'sports')
           .then(result => {
             assert.equal(mozCamera.sceneMode, 'sports');
             assert.equal(result, 'sports');
-            return el.setSceneMode('unknown');
+            return el.set('sceneMode', 'unknown');
           })
 
         .then(result => {
@@ -711,8 +711,8 @@ suite('fxos-camera >>', function() {
     });
 
     suite('#takePicture()', function() {
-      test('it waits until camera is \'ready\'', function() {
-        el.setCamera('front');
+      test(`it waits until camera is 'ready'`, function() {
+        el.set('camera', 'front');
         return el.takePicture('my-picture.jpg')
           .then(picture => {
             assert.equal(picture.camera, 'front');
@@ -728,7 +728,7 @@ suite('fxos-camera >>', function() {
       });
 
       test('rotation is mirrored for front camera', function() {
-        el.setCamera('front');
+        el.set('camera', 'front');
         return el.takePicture('my-picture.jpg', { rotation: 90 })
           .then(picture => {
             var config = mozCamera.takePicture.lastCall.args[0];
@@ -1156,7 +1156,7 @@ suite('fxos-camera >>', function() {
 
       test('the viewfinder is mirrored for front camera', function() {
         var wrapper = el.shadowRoot.querySelector('.wrapper');
-        return el.setCamera('front')
+        return el.set('camera', 'front')
           .then(() => {
             assert.include(wrapper.style.transform, 'scale(-1, 1)');
           });
@@ -1164,7 +1164,7 @@ suite('fxos-camera >>', function() {
 
       test('the viewfinder is mirrored for front camera', function() {
         var wrapper = el.shadowRoot.querySelector('.wrapper');
-        return el.setCamera('front')
+        return el.set('camera', 'front')
           .then(() => {
             assert.include(wrapper.style.transform, 'scale(-1, 1)');
           });
@@ -1320,7 +1320,7 @@ suite('fxos-camera >>', function() {
             var pictureSizes = capabilities.flame.back.pictureSizes;
             assert.equal(pictureSizes[0].width, result[0].width);
             assert.equal(pictureSizes[0].height, result[0].height);
-            el.setCamera('front');
+            el.set('camera', 'front');
             return el.get('pictureSizes');
           })
 

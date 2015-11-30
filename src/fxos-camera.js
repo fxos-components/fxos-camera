@@ -62,32 +62,12 @@ var FXOSCameraPrototype = {
     return this[internal].stop();
   },
 
-  setCamera(value) {
-    return this[internal].setCamera(value);
-  },
-
-  setMode(value) {
-    return this[internal].setMode(value);
-  },
-
-  setFlashMode(value) {
-    return this[internal].setFlashMode(value);
-  },
-
-  setPictureSize(value) {
-    return this[internal].setPictureSize(value);
-  },
-
   get(value) {
     return this[internal].get(value);
   },
 
   set(key, value) {
     return this[internal].set(key, value);
-  },
-
-  setSceneMode(value) {
-    return this[internal].setSceneMode(value);
   },
 
   takePicture(filePath, options) {
