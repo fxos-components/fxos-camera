@@ -2,7 +2,7 @@
   "name": "fxos-camera",
   "version": "1.0.0",
   "description": "A camera component",
-  "main": "index.js",
+  "main": "src/fxos-camera.js",
   "devDependencies": {
     "browserify": "^12.0.1",
     "chai": "^3.4.1",
