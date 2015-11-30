@@ -16,12 +16,12 @@ script:
   - $CI_ACTION
 
 after_script:
-  - npm run coveralls
+  - npm run -s coveralls
 
 env:
   global:
     - TEST_SUITE=unit
   matrix:
-    - CI_ACTION="npm run test-lint"
-    - CI_ACTION="npm run test-unit"
+    - CI_ACTION="npm run -s test-lint"
+    - CI_ACTION="npm run -s test-unit"
 

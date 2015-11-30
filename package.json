@@ -25,7 +25,8 @@
     "test-unit": "./node_modules/karma/bin/karma start test/karma.conf --single-run",
     "test": "npm run test-unit && npm run test-lint",
     "bundle": "browserify src/fxos-camera.js -o fxos-camera.js -s FXOSCamera",
-    "watch": "watchify src/fxos-camera.js -o fxos-camera.js -s FXOSCamera"
+    "watch": "watchify src/fxos-camera.js -o fxos-camera.js -s FXOSCamera",
+    "coveralls": "cat test/coverage/lcov.info | coveralls"
   },
   "author": "Wilson Page",
   "license": "ISC",
