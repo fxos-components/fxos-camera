@@ -1,6 +1,5 @@
 {
   "name": "fxos-camera",
-  "version": "1.0.0",
   "description": "A camera component",
   "main": "index.js",
   "devDependencies": {
