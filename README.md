@@ -2,8 +2,6 @@
 
 > A Web Component that makes writing camera applications for *FirefoxOS* easy.
 
-## Installation
-
 ```bash
 $ npm install fxos-camera
 ```
@@ -11,7 +9,7 @@ $ npm install fxos-camera
 ## Usage
 
 1. Include `fxos-camera.js` in your app
-2. Place `<fxos-camera></fxos-camera>` in your document.
+2. Place `<fxos-camera>` in your document.
 3. Add `webapp.manifest` permissions ([see example](examples/app/manifest.webapp)):
   - `"camera"`
   - `"device-storage:pictures"`
@@ -55,7 +53,9 @@ camera.set('camera', 'back')
   .then(...);
 ```
 
-You query for the available cameras. Most devices today have two cameras: `'front'` and `'back`'. You can use the result of this query to determine whether to show a camera 'toggle' button in your app or not.
+### Get available cameras
+
+Most devices today have two cameras: `'front'` and `'back`'. You can use the result of this query to determine whether to show a camera 'toggle' button in your app or not.
 
 ```js
 camera.get('cameras')
@@ -64,7 +64,7 @@ camera.get('cameras')
   });
 ```
 
-### Focusing
+### Set focus
 
 `FXOSCamera` will run continuous-auto-focus (CAF) if available on the hardware. You have the ability to override this by by focusing on a specific point. It is common for camera apps to support a 'tap to focus' feature.
 
