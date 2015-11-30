@@ -31,5 +31,6 @@
   "license": "ISC",
   "dependencies": {
     "gaia-component": "gaia-components/gaia-component"
-  }
+  },
+  "version": "1.0.0"
 }
