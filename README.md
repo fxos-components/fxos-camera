@@ -12,7 +12,10 @@ $ npm install fxos-camera
 
 1. Include `fxos-camera.js` in your app
 2. Place `<fxos-camera></fxos-camera>` in your document.
-3. Add `"camera"`, `"device-storage:pictures"` and `"device-storage:videos"` permissions to your `webapp.manifest` ([see example](examples/app/manifest.webapp)).
+3. Add `webapp.manifest` permissions ([see example](examples/app/manifest.webapp)):
+  - `"camera"`
+  - `"device-storage:pictures"`
+  - `"device-storage:videos"`
 
 ### Taking pictures
 
