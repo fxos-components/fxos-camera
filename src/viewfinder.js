@@ -106,7 +106,6 @@ Viewfinder.prototype = {
     requestAnimationFrame(() => {
       var largest = i === 0;
       var style = el.style;
-      var speed = 0.35;
 
       el.classList.add('active');
       el.classList.toggle('largest', largest);
@@ -115,15 +114,6 @@ Viewfinder.prototype = {
         translate(-50%,-50%)
         translate(${px.x}px,${px.y}px)
         scale(${scale})`;
-
-      if (el._x) {
-        var distance = getDistance(el._x, px.x, el._y, px.y);
-        var time = Math.round(distance / speed);
-        // style.transition = `transform ${time}ms`;
-      }
-
-      el._x = px.x;
-      el._y = px.y;
     });
   },
 

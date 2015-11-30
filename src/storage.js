@@ -20,8 +20,7 @@ Storage.prototype = {
     if (!arguments.length) return this.clearAll();
     if (!this.has(key)) return;
     var past = 'Thu, 01 Jan 1970 00:00:00 GMT';
-    key = encodeURIComponent(key);
-    document.cookie = `${key}=; expires=${past}; path=/;`;
+    document.cookie = `${encodeURIComponent(key)}=; expires=${past}; path=/;`;
   },
 
   clearAll() {
@@ -35,7 +34,7 @@ Storage.prototype = {
   },
 
   has(key) {
-    return !!~document.cookie.indexOf(`${key}=`);
+    return !!~document.cookie.indexOf(`${encodeURIComponent(key)}=`);
   }
 };
 

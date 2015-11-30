@@ -24,6 +24,14 @@ var debug = 1 ? (...args) => console.log('[FXOSCamera]', ...args) : () => {};
 var internal = 0 ? 'internal' : Symbol();
 
 /**
+ * Shorthand
+ *
+ * @type  {Function}
+ */
+var on = (el, name, fn) => el.addEventListener(name, fn);
+var off = (el, name, fn) => el.removeEventListener(name, fn);
+
+/**
  * Public class.
  *
  * @type {Object}
@@ -56,7 +64,7 @@ var FXOSCameraPrototype = {
   },
 
   setCamera(value) {
-    return this[internal].setType(value);
+    return this[internal].setCamera(value);
   },
 
   setMode(value) {
@@ -87,8 +95,8 @@ var FXOSCameraPrototype = {
     return this[internal].takePicture(filePath, options);
   },
 
-  startRecording(options) {
-    return this[internal].startRecording(options);
+  startRecording(filePath, options) {
+    return this[internal].startRecording(filePath, options);
   },
 
   stopRecording() {
@@ -101,8 +109,7 @@ var FXOSCameraPrototype = {
 
   attrs: {
     maxFileSize: {
-      set(value) { this[internal].setMaxFileSize(value); },
-      get() { return this[internal].maxFileSize; }
+      set(value) { this[internal].setMaxFileSize(value); }
     },
 
     flush: {
@@ -210,25 +217,52 @@ function Internal(el) {
   this.started = new Deferred();
   this.pending = {};
 
+  // defaults
   this.mode = 'picture';
   this.type = 'back';
 
+  // bind helps removeEventListener()
   this.onVisibilityChange = this.onVisibilityChange.bind(this);
   this.onFocusChanged = this.onFocusChanged.bind(this);
   this.onFacesChanged = this.onFacesChanged.bind(this);
+  this.onShutter = this.onShutter.bind(this);
 }
 
 Internal.prototype = {
+
+  /**
+   * As soon as the component is
+   * attached to the DOM we start
+   * up the camera.
+   *
+   * @private
+   */
   attached() {
     this.start();
-    document.addEventListener('visibilitychange', this.onVisibilityChange);
+    on(document, 'visibilitychange', this.onVisibilityChange);
   },
 
+  /**
+   * As soon as the component is
+   * detached from the DOM we stop
+   * the camera.
+   *
+   * @private
+   */
   detached() {
     this.stop();
-    document.removeEventListener('visibilitychange', this.onVisibilityChange);
+    off(document, 'visibilitychange', this.onVisibilityChange);
   },
 
+  /**
+   * Start the camera.
+   *
+   * The viewfinder will be displayed
+   * and the camera will be setup ready
+   * to capture.
+   *
+   * @return {Promise}
+   */
   start() {
     if (this._started) return this._started;
     debug('starting ...');
@@ -247,6 +281,14 @@ Internal.prototype = {
         .catch(this.started.reject);
   },
 
+  /**
+   * Stop the camera.
+   *
+   * The viewfinder will stop streaming
+   * and the camera will be released.
+   *
+   * @return {Promise}
+   */
   stop() {
     if (this._stopped) return this._stopped;
     debug('stopping ...');
@@ -261,9 +303,19 @@ Internal.prototype = {
       })
 
       .then(this.stopped.resolve)
-      .catch(this.stopped.reject);
+      .catch(err => {
+        this.stopped.reject(err);
+        throw err;
+      });
   },
 
+  /**
+   * Resolves when the camera has
+   * fully started and any hardware
+   * aquisition is complete.
+   *
+   * @return {Promise}
+   */
   loaded() {
     return Promise.all([
       this.started.promise,
@@ -271,6 +323,20 @@ Internal.prototype = {
     ]);
   },
 
+  /**
+   * Load the currently chosen camera type.
+   *
+   * 1. Acquired hardware is released
+   * 2. Viewfinder updated to match the latest preview-size
+   * 3. Camera set to stream into <video>
+   *
+   * We before we resolve the original Promise
+   * we check to make sure that the Camera
+   * type wasn't changed whilst the operation
+   * was in progress, if it has: repeat.
+   *
+   * @return {Promise}
+   */
   load() {
     debug('load');
     if (this.loading) return this.loading;
@@ -289,10 +355,11 @@ Internal.prototype = {
           mode: this.mode,
           onFocusChanged: this.onFocusChanged,
           onFacesChanged: this.onFacesChanged,
-          onError: e => this.onError(e)
+          onError: e => this.onError(e),
+          onShutter: this.onShutter
         });
 
-        return this.camera.ready;
+        return this.camera._ready;
       })
 
       .then(() => {
@@ -314,41 +381,71 @@ Internal.prototype = {
     return this._loaded = this.loading = loaded;
   },
 
-  setType(type) {
+  /**
+   * Set the camera 'type'.
+   *
+   * @param {String} type  'front'|'back'
+   */
+  setCamera(type) {
     debug('set type', type);
-    if (!this.knownType(type)) return Promise.reject('unknown type');
+    if (!this.knownType(type)) return Promise.reject(error(4, type));
     this.type = type;
     this.viewfinder.hide();
     return this.load()
       .then(() => this.viewfinder.show());
   },
 
+  /**
+   * Test if given type is valid.
+   *
+   * @param  {String} type
+   * @return {Boolean}
+   */
   knownType(type) {
-    return !!~navigator.mozCameras
-      .getListOfCameras()
-      .indexOf(type);
+    return !!~this.getCameras().indexOf(type);
   },
 
-  setMode(mode, options={}) {
-    debug('set mode', mode);
-    if (!this.knownMode(mode)) return Promise.reject('unknown mode');
+  /**
+   * Get list of available camera 'types'.
+   *
+   * @return {Array}
+   */
+  getCameras() {
+    return navigator.mozCameras.getListOfCameras();
+  },
+
+  /**
+   * Test if given camera mode is known.
+   *
+   * @param  {String} type
+   * @return {Boolean}
+   */
+  knownMode(type) {
+    return !!{
+      'video': 1,
+      'picture': 1
+    }[type];
+  },
+
+  /**
+   * Set the mode.
+   *
+   * @param {String} value
+   * @param {Object} [options]
+   * @param {Boolean} [options.hide]
+   */
+  setMode(value, options={}) {
+    debug('set mode', value);
+    if (!this.knownMode(value)) return Promise.reject(error(3, value));
     var hide = options.hide !== false;
 
-    this.mode = mode;
+    this.mode = value;
     return this.loaded()
       .then(() => hide && this.viewfinder.hide())
 
       .then(() => {
         debug('setting mode', this.mode);
         return this.camera.configure({ mode: this.mode });
-      })
-
-      .then(() => {
-        debug('mode set', this.camera.mode);
-        if (this.camera.mode !== this.mode) {
-          debug('mode changed during config', this.mode);
-          return this.setMode(this.mode, { hide: false });
-        }
       })
 
       // If the camera was 'destroyed' before
@@ -364,30 +461,79 @@ Internal.prototype = {
       .then(() => hide && this.viewfinder.show());
   },
 
+  /**
+   * Set the maximum file size the
+   * Camera should record up to.
+   *
+   * When in video mode the camera hardware
+   * will automatically stop recording
+   * if/when this size is reached.
+   *
+   * In picture mode, the picture will
+   * no be taken if there is not enough
+   * space.
+   *
+   * @param {[type]} value [description]
+   */
   setMaxFileSize(value) {
     this.maxFileSize = value;
     return this.loaded()
       .then(() => this.camera.setMaxFileSize(value));
   },
 
+  /**
+   * Take a picture.
+   *
+   * Throws if called when picture
+   * taking is in progress.
+   *
+   * @param  {String} filePath
+   * @param  {Object} [options]
+   * @param  {Object} [options.position]
+   * @param  {Object} [options.rotation]
+   * @return {Promise<Picture>}
+   */
   takePicture(filePath, options) {
     return this.loaded()
       .then(() => {
-        if (!filePath) throw error(1);
+        if (typeof filePath !== 'string') throw error(1);
         return this.camera.takePicture(filePath, options);
       });
   },
 
-  startRecording(options) {
+  /**
+   * Starts recording.
+   *
+   * @param  {String} filePath
+   * @param  {Object} options
+   * @param  {Object} [options.position]
+   * @param  {Object} [options.rotation]
+   * @return {Promise}
+   */
+  startRecording(filePath, options) {
     return this.loaded()
-      .then(() => this.camera.startRecording(options));
+      .then(() => {
+        if (typeof filePath !== 'string') throw error(1);
+        return this.camera.startRecording(filePath, options);
+      });
   },
 
+  /**
+   * Stops recording and returns a `Video`.
+   *
+   * @return {Promise<Video>}
+   */
   stopRecording() {
     return this.loaded()
       .then(() => this.camera.stopRecording());
   },
 
+  /**
+   * Focuses the camera on a specific point.
+   *
+   * @param  {Event} e
+   * @return {Promise}
+   */
   focus(e) {
     return this.loaded()
       .then(() => {
@@ -443,6 +589,11 @@ Internal.prototype = {
       .then(result => this.sceneMode = result);
   },
 
+  /**
+   * Set the flash mode.
+   *
+   * @param {String} value
+   */
   setFlashMode(value) {
     debug('set flash mode', value);
     this.flashMode = value;
@@ -451,6 +602,11 @@ Internal.prototype = {
       .then(result => this.flashMode = result);
   },
 
+  /**
+   * Set the HDR mode.
+   *
+   * @param {String} value
+   */
   setHdrMode(value) {
     debug('set flash mode', value);
     this.hdrMode = value;
@@ -459,32 +615,20 @@ Internal.prototype = {
       .then(result => this.hdrMode = result);
   },
 
+  /**
+   * Set the zoom level.
+   *
+   * @param {String} value
+   */
   setZoom(value) {
     debug('set zoom', value);
     this.zoom = value;
     return this.loaded()
       .then(() => this.camera.setZoom(value))
-      .then(result => {
-        debug('zoom set', result, value, this.zoom);
-
-        // FIXME: This is a bit gross
-        if (this.zoom !== value || result.input !== value) {
-          debug('zoom since changed', this.zoom);
-          return this.setZoom(this.zoom);
-        }
-
-        return this.zoom = result.value;
-      });
+      .then(result => this.zoom = result.value);
   },
 
   setEffect() {},
-
-  knownMode(type) {
-    return !!{
-      'video': 1,
-      'picture': 1
-    }[type];
-  },
 
   /**
    * Releases the camera hardware.
@@ -501,17 +645,30 @@ Internal.prototype = {
       });
   },
 
+  /**
+   * Get something.
+   *
+   * @param  {String} key
+   * @return {Promise}
+   */
   get(key) {
     return this.loaded()
       .then(() => {
         switch (key) {
           case 'viewfinderSize': return this.viewfinder.size;
+          case 'cameras': return this.getCameras();
           case 'camera': return this.camera.get('type');
           default: return this.camera.get(key);
         }
       });
   },
 
+  /**
+   * Set something.
+   *
+   * @param {String} key
+   * @param {*} value
+   */
   set(key, value) {
     debug('set', key, value);
     switch (key) {
@@ -521,13 +678,19 @@ Internal.prototype = {
       case 'sceneMode': return this.setSceneMode(value);
       case 'flashMode': return this.setFlashMode(value);
       case 'hdrMode': return this.setHdrMode(value);
-      case 'camera': return this.setType(value);
+      case 'camera': return this.setCamera(value);
       case 'mode': return this.setMode(value);
       case 'zoom': return this.setZoom(value);
       default: return Promise.reject(new Error('unknown setting'));
     }
   },
 
+  /**
+   * Dispatch an event on <fxos-camera>.
+   *
+   * @param  {String]} name
+   * @param  {*} [detail]
+   */
   emit(name, detail) {
     this.el.dispatchEvent(new CustomEvent(name, {
       bubbles: false,
@@ -535,24 +698,70 @@ Internal.prototype = {
     }));
   },
 
+  /**
+   * Called by MozCamera when an error
+   * occurs that is not covered by
+   * a Promise.
+   *
+   * @param  {Error} err
+   * @private
+   */
   onError(err) {
     this.emit('error', err);
   },
 
+  /**
+   * Called by MozCamera when focus changes.
+   *
+   * @param  {String} value  'focusing'|'focused'|'failed'
+   * @param  {Object} point  the current point of focus
+   * @private
+   */
   onFocusChanged(value, point) {
     debug('focus changed', value, point);
     this.viewfinder.setFocus(value, point);
   },
 
+  /**
+   * Called by MozCamera faces are detected.
+   *
+   * @param  {Array} faces
+   * @private
+   */
   onFacesChanged(faces) {
     debug('faces changed', faces);
     this.viewfinder.setFaces(faces);
   },
 
+  /**
+   * Handles when the app/tab is shown/hidden.
+   *
+   * We must stop the camera when the app
+   * is sent to the background so that
+   * other apps may have the chance to
+   * acquire the hardware.
+   *
+   * @private
+   */
   onVisibilityChange() {
     debug('visibilitychange', document.hidden);
     if (document.hidden) this.stop();
     else this.start();
+  },
+
+  /**
+   * Called by the MozCamera when the
+   * hardware indicates the precise
+   * moment the image is captured.
+   *
+   * This gives the app the opportunity
+   * to provide some kind of visual/audio
+   * feedback.
+   *
+   * @private
+   */
+  onShutter() {
+    this.emit('shutter');
   }
 };
 
@@ -647,7 +856,10 @@ function rotatePoint(x, y, angle) {
 function error(id, ...args) {
   /*jshint maxlen:false*/
   return new Error({
-    1: `please provide a path (eg. 'path/to/my-image.jpg')`
+    1: `invalid arguments - FXOSCamera#takePicture(filePath, [options])`,
+    2: `invalid arguments - FXOSCamera#startRecording(filePath, [options])`,
+    3: `invalid mode: '${args[0]}' - FXOSCamera#set('mode', 'picture'|'video')`,
+    4: `invalid camera type: '${args[0]}'`
   }[id]);
 }
 

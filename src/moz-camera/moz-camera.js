@@ -14,16 +14,19 @@ var Focus = require('./focus');
 var Video = require('./video');
 
 /**
- * Mini logger.
+ * Mini logger
  *
- * @type {Funciton}
+ * @type {Function}
  */
 var debug = 1 ? (...args) => console.log('[MozCamera]', ...args) : () => {};
 
+/**
+ * Shorthand
+ *
+ * @type  {Function}
+ */
 var on = (el, name, fn) => el.addEventListener(name, fn);
 var off = (el, name, fn) => el.removeEventListener(name, fn);
-
-var key = Symbol();
 
 /**
  * Exports
@@ -36,10 +39,10 @@ function MozCamera(options) {
   Object.assign(this, options);
   this.pictureSize = pictureSize.toConfig(this.getCached('pictureSize'));
   this.recorderProfile = this.getCached('recorderProfile');
+  this._ready = this.load();
   this.attempts = 3;
   this.queued = {};
-  this.ready = this.load();
-  this[key] = {};
+  this.pending = {};
 }
 
 MozCamera.prototype = {
@@ -56,26 +59,32 @@ MozCamera.prototype = {
    */
   load() {
     debug('load');
-    return this.getCamera()
-      .then(({camera, configuration}) => {
-        debug('got camera');
-        var capabilities = camera.capabilities;
+    // return this.block('load', () => {
+      return this.getCamera()
+        .then(({camera, configuration}) => {
+          debug('got camera');
+          var capabilities = camera.capabilities;
 
-        this.sensorAngle = camera.sensorAngle;
-        this.mozCamera = camera;
+          this.sensorAngle = camera.sensorAngle;
+          this.mozCamera = camera;
 
-        this.effectModes = capabilities.effectModes;
-        this.sceneModes = capabilities.sceneModes;
-        this.flashModes = capabilities.flashModes;
+          this.effectModes = capabilities.effectModes;
+          this.sceneModes = capabilities.sceneModes;
+          this.flashModes = capabilities.flashModes;
 
-        this.updateRecorderProfiles(capabilities.recorderProfiles);
-        this.updatePictureSizes(capabilities.pictureSizes);
-        this.onConfigured(configuration);
-      });
+          this.updateRecorderProfiles(capabilities.recorderProfiles);
+          this.updatePictureSizes(capabilities.pictureSizes);
+
+          on(camera, 'shutter', this.onShutter);
+          this.onConfigured(configuration);
+        });
+      // });
   },
 
   configure(params) {
-    return this.queue('configure', () => {
+    return this.one('configure', () => {
+      if (this.recording) throw error(2);
+
       var config = this.createConfig(params);
       debug('configuring...', params, config);
 
@@ -84,11 +93,12 @@ MozCamera.prototype = {
         return;
       }
 
-      // TODO: stop focus
+      this.focus.stop();
 
       return this.mozCamera.setConfiguration(config)
         .then(result => this.onConfigured(result))
-        .then(() => this.oncePreviewStarted());
+        .then(() => this.oncePreviewStarted())
+        .then(() => this.focus.start());
     });
   },
 
@@ -102,7 +112,6 @@ MozCamera.prototype = {
    *
    *   - mozCamera.setConfiguration();
    *   - navigator.mozCameras.getCamera();
-   *
    *
    * @param  {Object} config
    */
@@ -137,22 +146,24 @@ MozCamera.prototype = {
     debug('get camera', this.type, config);
     return navigator.mozCameras.getCamera(this.type, config)
       .catch(err => {
-        return new Promise((resolve, reject) => {
-          debug('error requesting camera', err);
+        debug('error requesting camera', err);
+        var defer = new Deferred();
 
-          if (!(this.attempts--)) {
-            reject(new Error('hardware-unavailable'));
-            return;
-          }
+        if (!(this.attempts--)) {
+          debug('no attempts left');
+          defer.reject(new Error('hardware-unavailable'));
+          return defer.promise;
+        }
 
-          // try again one second later ...
-          this.getCameraTimeout = setTimeout(() => {
-            debug('re-requesting camera', this.attempts);
-            var config = this.createConfig();
-            this.getCamera(this.camera, config)
-              .then(resolve, reject);
-          }, interval);
-        });
+        // try again one second later ...
+        this.getCameraTimeout = setTimeout(() => {
+          debug('re-requesting camera', this.attempts);
+          var config = this.createConfig();
+          this.getCamera(this.camera, config)
+            .then(defer.resolve, defer.reject);
+        }, interval);
+
+        return defer.promise;
       });
   },
 
@@ -218,10 +229,10 @@ MozCamera.prototype = {
   },
 
   setPictureSize(key) {
-    return this.ready
+    return this.ready()
       .then(() => {
         var size = this.getPictureSize(key);
-        if (!size) throw new Error(`unknown size: ${key}`);
+        if (!size) throw error(6);
         debug('setting picture size ...', key);
         this.setCached('pictureSize', key);
         return this.configure({ pictureSize: size });
@@ -229,10 +240,10 @@ MozCamera.prototype = {
   },
 
   setRecorderProfile(key) {
-    return this.ready
+    return this.ready()
       .then(() => {
         var profile = this.getRecorderProfile(key);
-        if (!profile) throw new Error('unknown profile');
+        if (!profile) throw error(7);
         debug('setting recorder profile ...', key);
         this.setCached('recorderProfile', key);
         return this.configure({ recorderProfile: key });
@@ -240,6 +251,7 @@ MozCamera.prototype = {
   },
 
   getRecorderProfile(key) {
+    debug('get recorder profile', key);
     return this.recorderProfiles.hash[key];
   },
 
@@ -252,7 +264,7 @@ MozCamera.prototype = {
   },
 
   setFlashMode(value) {
-    return this.ready
+    return this.ready()
       .then(() => {
         if (!this.hasFlashMode(value)) return this.get('flashMode');
         this.setCached(`${this.mode}:flashMode`, value);
@@ -273,7 +285,7 @@ MozCamera.prototype = {
   },
 
   setSceneMode(value) {
-    return this.ready
+    return this.ready()
       .then(() => {
         var hasSceneMode = !!~this.sceneModes.indexOf(value);
         if (!hasSceneMode) return this.get('sceneMode');
@@ -347,7 +359,7 @@ MozCamera.prototype = {
    * @returns {Promise}
    */
   setHdrMode(value) {
-    return this.ready
+    return this.ready()
       .then(() => {
         if (!this.hasHdr()) return null;
         switch (value) {
@@ -416,6 +428,7 @@ MozCamera.prototype = {
 
   /**
    * Take a Picture.
+   *
    * @param  {String} filePath
    * @param  {Object} [options]
    * @param  {Number} [options.rotation] device orientation (deg)
@@ -423,7 +436,7 @@ MozCamera.prototype = {
    * @return {Promise}
    */
   takePicture(filePath, options={}) {
-    return this.queue('takePicture', () => {
+    return this.block('takePicture', () => {
       debug('taking picture ...', options);
 
       var picture = new Picture({
@@ -452,37 +465,48 @@ MozCamera.prototype = {
    *
    * @public
    */
-  startRecording(options) {
-    debug('start recording', options);
+  startRecording(filePath, options={}) {
+    return this.ready()
+      .then(() => {
+        if (this.mode !== 'video') return Promise.reject(error(3));
+        if (this.recording) return Promise.reject(error(2));
+        debug('start recording', options);
 
-    var rotation = options && options.rotation;
-    var filePath = options && options.filePath;
-    var frontCamera = this.type === 'front';
-    var profile = this.getRecorderProfile(this.recorderProfile);
+        var rotation = options.rotation;
+        var frontCamera = this.type === 'front';
+        var profile = this.getRecorderProfile(this.recorderProfile);
 
-    // Rotation is flipped for front camera
-    if (frontCamera) rotation = -rotation;
+        // Rotation is flipped for front camera
+        if (frontCamera) rotation = -rotation;
 
-    this.video = new Video({
-      maxFileSize: this.maxFileSize,
-      previewSize: this.previewSize,
-      mozCamera: this.mozCamera,
-      filePath: filePath,
-      rotation: rotation,
-      storage: this.storage,
-      width: profile.width,
-      height: profile.height,
-      recorderProfile: this.recorderProfile
-    });
+        this.video = new Video({
+          maxFileSize: this.maxFileSize,
+          previewSize: this.previewSize,
+          mozCamera: this.mozCamera,
+          filePath: filePath,
+          rotation: rotation,
+          storage: this.storage,
+          width: profile.width,
+          height: profile.height,
+          recorderProfile: this.recorderProfile
+        });
 
-    this.video.complete
-      .catch(err => this.onError(err));
+        // When recording is complete
+        this.video.complete
+          .catch(err => this.onError(err))
+          .then(() => {
+            this.recording = false;
+            delete this.video;
+          });
 
-    return this.video.start();
+        this.recording = true;
+        return this.video.start();
+      });
   },
 
   stopRecording() {
     debug('stop recording');
+    if (!this.recording) return Promise.resolve();
     return this.video.stop();
   },
 
@@ -492,7 +516,7 @@ MozCamera.prototype = {
   },
 
   setFocus(rect) {
-    this.ready
+    return this.ready()
       .then(() => {
         debug('focus', rect);
         return this.focus.set(rect);
@@ -505,22 +529,22 @@ MozCamera.prototype = {
   },
 
   setZoom(value) {
-    return this.queue('setZoom', () => {
-      return new Promise(resolve => {
-        var clamped = this.clampZoomToRange(value);
+    return this.one('setZoom', () => {
+      var clamped = this.clampZoomToRange(value);
+      var defer = new Deferred();
 
-        // Gecko validates this and adjusts
-        // the value to an exact zoom-ratio
-        this.mozCamera.zoom = clamped;
+      // Gecko validates this and adjusts
+      // the value to an exact zoom-ratio
+      this.mozCamera.zoom = clamped;
 
-        var result = {
-          input: value,
-          value: this.mozCamera.zoom
-        };
+      var result = {
+        input: value,
+        value: this.mozCamera.zoom
+      };
 
-        debug('set zoom', this.mozCamera.zoom);
-        setTimeout(() => resolve(result), 150);
-      });
+      debug('set zoom', this.mozCamera.zoom);
+      setTimeout(() => defer.resolve(result), 150);
+      return defer.promise;
     });
   },
 
@@ -533,7 +557,7 @@ MozCamera.prototype = {
   },
 
   destroy() {
-    return this.queue('destroy', () => {
+    return this.block('destroy', () => {
 
       // Clear any queued hardware requests
       clearTimeout(this.getCameraTimeout);
@@ -541,17 +565,17 @@ MozCamera.prototype = {
       // Ignore if there is no loaded camera
       if (!this.mozCamera) return;
 
-      // this.stopRecording();
+      off(this.mozCamera, 'shutter', this.onShutter);
       this.focus.stop();
 
-      return this.mozCamera.release()
+      return this.stopRecording()
+        .then(() => this.mozCamera.release())
         .then(() => {
           debug('destroyed');
           this.destroyed = true;
           delete this.mozCamera;
           delete this.pictureSize;
           delete this.recorderProfile;
-          delete this.queued.release;
         })
 
         .catch(err => {
@@ -561,17 +585,20 @@ MozCamera.prototype = {
   },
 
   get(key) {
-    debug('get', key);
-    switch (key) {
-      case 'recorderProfile': return this.recorderProfile;
-      case 'pictureSize': return this.pictureSize.key;
-      case 'sceneModes': return this.getSceneModes();
-      case 'sceneMode': return this.getSceneMode();
-      case 'hdrModes': return this.getHdrModes();
-      case 'hdrMode': return this.getHdrMode();
-      case 'maxZoom': return this.getMaxZoom();
-      default: return Promise.resolve(this.mozCamera[key] || this[key]);
-    }
+    return this.ready()
+      .then(() => {
+        debug('get', key);
+        switch (key) {
+          case 'recorderProfile': return this.recorderProfile;
+          case 'pictureSize': return this.pictureSize.key;
+          case 'sceneModes': return this.getSceneModes();
+          case 'sceneMode': return this.getSceneMode();
+          case 'hdrModes': return this.getHdrModes();
+          case 'hdrMode': return this.getHdrMode();
+          case 'maxZoom': return this.getMaxZoom();
+          default: return this.mozCamera[key] || this[key];
+        }
+      });
   },
 
   getCached(key) {
@@ -584,32 +611,61 @@ MozCamera.prototype = {
     return storage.set(`${this.type}:${key}`, value);
   },
 
-  queue(name, fn) {
-    debug('queue', name, !!this.queued[name]);
-    if (this.queued[name]) return this.queued[name];
-
-    var promise = this.ready
+  ready() {
+    return this._ready
       .catch(err => {
-        debug('the last task threw', err.message);
+        debug('the last block() threw', err.lineNumber);
       })
 
       .then(() => {
-        if (this.destroyed) {
-          debug('noop: destroyed');
-          throw new Error('destroyed');
-        }
+        if (this.destroyed) throw error(4);
+      });
+  },
 
-        return fn();
-      })
+  block(name, fn) {
+    debug('block', name, !!this.pending[name]);
+    if (this.pending[name]) return Promise.reject(error(5));
 
+    var promise = this.ready()
+      .then(() => fn())
       .then(result => {
-        debug('queue task done', name, result);
-        delete this.queued[name];
+        debug('blocking task done', name);
+        delete this.pending[name];
         return result;
       });
 
-    this.ready = this.queued[name] = promise;
-    return promise;
+    return this._ready = this.pending[name] = promise;
+  },
+
+  one(name, fn, options={}) {
+    debug('one', name);
+
+    if (this.pending[name]) {
+      debug('one pending', name);
+      this.queued[name] = fn;
+      return this.pending[name];
+    }
+
+    var ready = options.ready
+      ? Promise.resolve()
+      : this.ready();
+
+    return this._ready = this.pending[name] = ready
+      .then(() => fn())
+      .then(result => {
+        delete this.pending[name];
+        var queued = this.queued[name];
+        if (!queued) return result;
+
+        debug('one queued', name);
+        delete this.queued[name];
+        return this.one(name, queued, { ready: true });
+      })
+
+      .then(result => {
+        debug('one task done', name);
+        return result;
+      });
   },
 
   // to overwrite
@@ -636,5 +692,32 @@ var pictureSize = {
     return `${config.width}x${config.height}`;
   }
 };
+
+function Deferred() {
+  this.promise = new Promise((resolve, reject) => {
+    this.resolve = resolve;
+    this.reject = reject;
+  });
+}
+
+/**
+ * Creates new `Error` from registery.
+ *
+ * @param  {Number} id Error Id
+ * @return {Error}
+ * @private
+ */
+function error(id, ...args) {
+  /*jshint maxlen:false*/
+  return new Error({
+    1: `picture taking in progress`,
+    2: `video recording in progress`,
+    3: `switch to 'video' mode before recording`,
+    4: `destroyed`,
+    5: `in-progress`,
+    6: `unknown picture-size: ${args[0]}`,
+    7: `unknown recorder-profile: ${args[0]}`
+  }[id]);
+}
 
 })})(((n,w)=>{return(typeof define)[0]=='f'&&define.amd?define:(typeof module)[0]=='o'?c =>{c(require,exports,module)}:c=>{var m={exports:{}},r=n=>w[n];w[n]=c(r,m.exports,m)||m.exports;};})('./lib/moz-camera',this));/*jshint ignore:line*/

@@ -33,9 +33,10 @@ window.MockMozCamera = (function() {
     pictureSize = pictureSize || this.capabilities.pictureSizes[0];
 
     // Look for matching recorder profile
-    var recorderProfile = this.capabilities.recorderProfiles[config.recorderProfile]
+    var recorderProfiles = this.capabilities.recorderProfiles;
+    var recorderProfile = recorderProfiles[config.recorderProfile]
       ? config.recorderProfile
-      : '720p';
+      : recorderProfiles.default.name;
 
     this.configuration = {
       previewSize: {
@@ -140,6 +141,7 @@ window.MockMozCamera = (function() {
       var defer = new Deferred();
 
       setTimeout(() => {
+        this.emit('shutter');
         defer.resolve(new Blob(['']));
       }, 100);
 

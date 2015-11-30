@@ -122,7 +122,7 @@ suite('fxos-camera >>', function() {
 
         test('it reattempts up to 3 times', function() {
           this.sinon.useFakeTimers();
-          defer.reject(new DOMError('NS_ERROR_NOT_AVAILABLE'));
+          defer.reject(new window.DOMError('NS_ERROR_NOT_AVAILABLE'));
 
           defer.promise
             .catch(() => Promise.resolve())
@@ -224,15 +224,18 @@ suite('fxos-camera >>', function() {
       });
 
       test('calling several times minimises hardware calls', function() {
-        el.setMode('video');
-        el.setMode('picture');
-        el.setMode('video');
-        el.setMode('picture');
+        return Promise.all([
+            el.setMode('video'),
+            el.setMode('picture'),
+            el.setMode('video'),
+            el.setMode('picture'),
+            el.setMode('video')
+          ])
 
-        return el.setMode('video').then(() => {
-          sinon.assert.calledOnce(mozCamera.setConfiguration);
-          sinon.assert.calledOnce(mozCamera.setConfiguration);
-        });
+          .then(() => {
+            sinon.assert.calledOnce(mozCamera.setConfiguration);
+            sinon.assert.calledOnce(mozCamera.setConfiguration);
+          });
       });
 
       test('it should fade out before configuring', function() {
@@ -260,6 +263,20 @@ suite('fxos-camera >>', function() {
           .then(() => {
             assert.ok(ViewfinderProto.show.calledAfter(spy));
           });
+      });
+
+      test('it throws for unknown modes', function() {
+        return el.setMode('wilson')
+          .then(() => assert.ok(false, 'should throw'))
+          .catch(err => assert.include(err.message, 'invalid mode'));
+      });
+
+      test('it throws when video recording is in progress', function() {
+        return el.set('mode', 'video')
+          .then(() => el.startRecording('foo.3gp'))
+          .then(() => el.setMode('picture'))
+          .then(() => assert.ok(false, 'should throw'))
+          .catch(err => assert.include(err.message, 'in progress'));
       });
     });
 
@@ -427,7 +444,7 @@ suite('fxos-camera >>', function() {
     suite('#takePicture()', function() {
       test('it waits until camera is \'ready\'', function() {
         el.setCamera('front');
-        return el.takePicture({ rotation: 90 })
+        return el.takePicture('my-picture.jpg')
           .then(picture => {
             assert.equal(picture.camera, 'front');
           });
@@ -525,6 +542,42 @@ suite('fxos-camera >>', function() {
             assert.ok(err instanceof Error);
           });
       });
+
+      test('it throws if picture taking is in progress', function() {
+        var first = el.takePicture('foo.jpg');
+        var second = el.takePicture('bar.jpg');
+
+        return first
+          .then(result => {
+            assert.ok(result.file);
+            return second;
+          })
+
+          .catch(err => {
+            assert.include(err.message, 'in-progress');
+            sinon.assert.calledOnce(mozCamera.takePicture);
+          });
+      });
+
+      test('it waits until the camera has changed', function() {
+        el.set('camera', 'front');
+        return el.takePicture('foo.jpg')
+          .then(picture => {
+            assert.equal(mozCamera.camera, 'front');
+            sinon.assert.calledOnce(mozCamera.takePicture);
+            assert.equal(picture.camera, 'front');
+          });
+      });
+
+      test('it dispatches a `shutter` event', function() {
+        var spy = sinon.spy();
+        el.addEventListener('shutter', spy);
+
+        return el.takePicture('foo.jpg')
+          .then(() => {
+            sinon.assert.calledOnce(spy);
+          });
+      });
     });
 
     suite('zoom >>', function() {
@@ -554,12 +607,34 @@ suite('fxos-camera >>', function() {
         test('it can be hammered', function() {
           return Promise.all([
               el.set('zoom', 2),
-              el.set('zoom', 3),
+              el.set('zoom', 10),
               el.set('zoom', 4)
             ])
 
             .then(result => {
               assert.deepEqual(result, [4, 4, 4]);
+            })
+
+            .then(() => {
+              var defer = new Deferred();
+              el.set('zoom', 1);
+
+              setTimeout(() => {
+                el.set('zoom', 2);
+                setTimeout(() => {
+                  el.set('zoom', 12)
+                    .then(result => {
+                      assert.equal(result, 6.06);
+                      return el.get('zoom');
+                    })
+
+                    .then(result => assert.equal(result, 6.06))
+                    .then(defer.resolve)
+                    .catch(defer.reject);
+                }, 30);
+              }, 10);
+
+              return defer.promise;
             });
         });
       });
@@ -599,21 +674,22 @@ suite('fxos-camera >>', function() {
       });
     });
 
-    suite('video recording', function() {
+    suite('video', function() {
+      setup(function() {
+        return el.set('mode', 'video');
+      });
+
       suite('#startRecording()', function() {
         test('it waits until camera is \'ready\'', function() {
-          return el.startRecording({
-              filePath: 'foo/bar/video.3gp',
-              rotation: 90
+          el.set('camera', 'front');
+          return el.startRecording('foo/bar/video.3gp')
+            .then(() => {
+              sinon.assert.calledOnce(mozCamera.startRecording);
             });
         });
 
         test('it records to the given filePath', function() {
-          return el.startRecording({
-              filePath: 'foo/bar/video.3gp',
-              rotation: 90
-            })
-
+          return el.startRecording('foo/bar/video.3gp', { rotation: 90 })
             .then(() => {
               var filePath = mozCamera.startRecording.lastCall.args[2];
               assert.equal(filePath, 'foo/bar/video.3gp');
@@ -621,11 +697,7 @@ suite('fxos-camera >>', function() {
         });
 
         test('it records to the given DeviceStorage', function() {
-          return el.startRecording({
-              filePath: 'foo/bar/video.3gp',
-              rotation: 90
-            })
-
+          return el.startRecording('foo/bar/video.3gp', { rotation: 90 })
             .then(() => {
               var storage = mozCamera.startRecording.lastCall.args[1];
               assert.equal(storage, deviceStorage);
@@ -633,11 +705,7 @@ suite('fxos-camera >>', function() {
         });
 
         test('it passes rotation to WebAPI', function() {
-          return el.startRecording({
-              filePath: 'foo/bar/video.3gp',
-              rotation: 90
-            })
-
+          return el.startRecording('foo/bar/video.3gp', { rotation: 90 })
             .then(() => {
               var config = mozCamera.startRecording.lastCall.args[0];
               assert.equal(config.rotation, 90);
@@ -647,11 +715,7 @@ suite('fxos-camera >>', function() {
         test('it `maxFileSize` to WebAPI', function() {
           el.maxFileSize = 6000;
 
-          return el.startRecording({
-              storage: deviceStorage,
-              filePath: 'foo/bar/video.3gp',
-              rotation: 90
-            })
+          return el.startRecording('foo/bar/video.3gp', { rotation: 90 })
 
             .then(() => {
               var config = mozCamera.startRecording.lastCall.args[0];
@@ -659,13 +723,65 @@ suite('fxos-camera >>', function() {
             });
         });
 
+        test('it throws if recording is in progress', function() {
+          var first = el.startRecording('foo.3gp');
+          var second = el.startRecording('bar.3gp');
+
+          return first
+            .then(() => {
+              return second;
+            })
+
+            .then(() => {
+              throw new Error('should not have succeeded');
+            })
+
+            .catch(err => {
+              assert.include(err.message, 'in progress');
+              sinon.assert.calledOnce(mozCamera.startRecording);
+            });
+        });
+
+        test('it throws if no file-path is given', function() {
+          return el.startRecording()
+            .then(() => assert.ok(false, 'should not resolve'))
+            .catch(err => {
+              assert.include(err.message, 'invalid');
+            });
+        });
+
+        test('it throws if not in `video` mode', function() {
+          return el.set('mode', 'picture')
+            .then(() => {
+              return el.startRecording('foo.3gp');
+            })
+
+            .then(() => assert.ok(false, 'should not resolve'))
+            .catch(err => assert.include(err.message, 'mode'));
+        });
+
+        test('it uses `videos` DeviceStorage', function() {
+          return el.startRecording('foo.3gp')
+            .then(() => {
+              var args = mozCamera.startRecording.lastCall.args;
+              var storage = args[1];
+
+              assert.equal(storage.type, 'videos');
+            });
+        });
+
+        test('it waits until the camera has changed', function() {
+          el.set('camera', 'front');
+          return el.startRecording('foo.3gp')
+            .then(() => {
+              assert.equal(mozCamera.camera, 'front');
+              sinon.assert.calledOnce(mozCamera.startRecording);
+            });
+        });
+
         suite('errors >>', function() {
           setup(function() {
-            return el.startRecording({
-              storage: deviceStorage,
-              filePath: 'foo/bar/video.3gp',
-              rotation: 90
-            });
+            return el.startRecording('foo/bar/video.3gp');
           });
 
           test('recording is stopped on `PosterFailed`', function(done) {
@@ -684,25 +800,31 @@ suite('fxos-camera >>', function() {
 
       suite('#stopRecording()', function() {
         setup(function() {
-          return el.startRecording({
-            filePath: 'foo/bar/video.3gp',
-            rotation: 90
-          });
+          return el.startRecording('foo/bar/video1.3gp');
         });
 
-        test('it returns the Video', function() {
+        test('it returns the `Video`', function() {
           return el.stopRecording()
             .then(video => {
               assert.ok(video.poster.blob instanceof Blob);
               assert.ok(video.poster.width);
               assert.ok(video.poster.height);
               assert.ok(video.file instanceof File);
+              assert.equal(video.filePath, 'foo/bar/video1.3gp');
             });
         });
-      });
 
-      test('it\'s stopped when .stop() is called', function() {
+        test('it can record more than one video', function() {
+          return el.stopRecording()
+            .then(() => {
+              return el.startRecording('foo/bar/video2.3gp');
+            })
 
+            .then(() => el.stopRecording())
+            .then(video => {
+              assert.equal(video.filePath, 'foo/bar/video2.3gp');
+            });
+        });
       });
     });
 
@@ -732,6 +854,25 @@ suite('fxos-camera >>', function() {
           .then(() => {
             sinon.assert.calledOnce(MozCameraProto.streamInto);
             sinon.assert.calledWith(MozCameraProto.streamInto, video);
+          });
+      });
+
+      test('it stops video recording', function() {
+        return el.set('mode', 'video')
+          .then(() => el.startRecording('foo.3pg'))
+          .then(() => el.stop())
+          .then(() => {
+            sinon.assert.calledOnce(mozCamera.stopRecording);
+          });
+      });
+
+      test('focus is stopped', function() {
+        mozCamera.stopFaceDetection.reset();
+
+        return el.stop()
+          .then(() => {
+            sinon.assert.calledOnce(mozCamera.stopFaceDetection);
+            sinon.assert.calledWith(mozCamera.removeEventListener, 'focus');
           });
       });
     });
@@ -903,7 +1044,7 @@ suite('fxos-camera >>', function() {
       });
     });
 
-    suite('get()', function() {
+    suite('#get() >>', function() {
       test('it returns the available picture sizes', function() {
         return el.get('pictureSizes')
           .then(result => {
@@ -918,6 +1059,112 @@ suite('fxos-camera >>', function() {
             var pictureSizes = capabilities.flame.front.pictureSizes;
             assert.equal(pictureSizes[0].width, result[0].width);
             assert.equal(pictureSizes[0].height, result[0].height);
+          });
+      });
+
+      test('it returns the available flash modes', function() {
+        return el.get('flashModes')
+          .then(result => {
+            assert.deepEqual(result, [
+              'off',
+              'auto',
+              'on',
+              'torch'
+            ]);
+          });
+      });
+
+      test('it returns the current flash mode', function() {
+        return el.get('flashMode')
+          .then(result => {
+            assert.equal(result, 'auto');
+            return el.set('flashMode', 'on');
+          })
+
+          .then(result => {
+            assert.equal(result, 'on');
+            return el.get('flashMode');
+          })
+
+          .then(result => {
+            assert.equal(result, 'on');
+          });
+      });
+
+      test('it returns the available scene modes', function() {
+        return el.get('sceneModes')
+          .then(result => {
+            assert.deepEqual(result, capabilities.flame.back.sceneModes);
+          });
+      });
+
+      test('it returns the available cameras', function() {
+        return el.get('cameras')
+          .then(result => {
+            assert.deepEqual(result, ['front', 'back']);
+          });
+      });
+
+      test('it returns the available recorderProfiles', function() {
+        return el.get('recorderProfiles')
+          .then(result => {
+            assert.equal(result.length, 7);
+
+            assert.deepEqual(result[0], {
+              key: '720p',
+              width: 1280,
+              height: 720,
+              aspect: '16:9',
+              pixelSize: 921600
+            });
+
+            assert.deepEqual(result[1], {
+                key: 'fwvga',
+                width: 864,
+                height: 480,
+                aspect: '9:5',
+                pixelSize: 414720
+            });
+
+            assert.deepEqual(result[2], {
+                key: 'wvga',
+                width: 800,
+                height: 480,
+                aspect: '5:3',
+                pixelSize: 384000
+            });
+
+            assert.deepEqual(result[3], {
+                key: '480p',
+                width: 720,
+                height: 480,
+                aspect: '3:2',
+                pixelSize: 345600
+            });
+
+            assert.deepEqual(result[4], {
+                key: 'vga',
+                width: 640,
+                height: 480,
+                aspect: '4:3',
+                pixelSize: 307200
+            });
+
+            assert.deepEqual(result[5], {
+                key: 'cif',
+                width: 352,
+                height: 288,
+                aspect: '11:9',
+                pixelSize: 101376
+            });
+
+            assert.deepEqual(result[6], {
+                key: 'qvga',
+                width: 320,
+                height: 240,
+                aspect: '4:3',
+                pixelSize: 76800
+            });
           });
       });
     });
