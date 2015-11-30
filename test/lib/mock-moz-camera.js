@@ -7,7 +7,6 @@ window.MockMozCamera = (function() {
   function MockMozCamera(camera, config) {
     this.id = ++id;
     this.sensorAngle = 270;
-    this.flashMode = 'auto';
     this.sceneMode = 'auto';
     this.effect = 'none';
 
@@ -17,6 +16,10 @@ window.MockMozCamera = (function() {
     this.emitter = document.createElement('div');
 
     var pictureSize;
+
+    this.flashMode = camera === 'back'
+      ? 'auto'
+      : this.capabilities.flashModes[0];
 
     // Look for matching pictureSize
     if (config.pictureSize) {

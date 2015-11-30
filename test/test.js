@@ -1,5 +1,5 @@
 /*jshint maxlen:false*/
-/* global suite, sinon, setup, teardown, test, assert, capabilities, MockMozCamera, MockDeviceStorage, HTMLMediaElement, File */
+/* global suite, sinon, setup, teardown, test, assert, capabilities, MockMozCamera, MockDeviceStorage, HTMLMediaElement, File, FXOSCamera */
 
 suite('fxos-camera >>', function() {
   'use strict';
@@ -9,9 +9,9 @@ suite('fxos-camera >>', function() {
     'mozSrcObject');
 
   var getDescriptor = Object.getOwnPropertyDescriptor;
-  var ViewfinderProto = window['./lib/viewfinder'].prototype;
-  var MozCameraProto = window['./lib/moz-camera'].prototype;
-  var storage = window['../storage'];
+  var ViewfinderProto = FXOSCamera.Viewfinder.prototype;
+  var MozCameraProto = FXOSCamera.MozCamera.prototype;
+  var storage = FXOSCamera.MozCamera.cookies;
   var deviceStorage;
   var mozCamera;
   var dom;
@@ -301,38 +301,307 @@ suite('fxos-camera >>', function() {
       });
     });
 
-    suite('#setFlashMode()', function() {
-      test('it sets the flashMode on the moz camera', function() {
-        return el.setFlashMode('on')
-          .then(() => el.get('flashMode'))
-          .then(result => {
-            assert.equal(result, 'on');
-            assert.equal(mozCamera.flashMode, 'on');
-          });
+    suite('picture-sizes >>', function() {
+      setup(function() {
+        this.sinon.spy(ViewfinderProto, 'update');
+        this.sinon.spy(ViewfinderProto, 'show');
+        this.sinon.spy(ViewfinderProto, 'hide');
       });
 
-      test('it can be called directly after .setCamera()', function() {
-        el.setCamera('front');
-        el.setCamera('back');
-        return el.setFlashMode('on')
-          .then(() => el.get('camera'))
-          .then(result => {
-            assert.equal(result, 'back');
-            assert.equal(mozCamera.flashMode, 'on');
-          });
+      suite('set >>', function() {
+        test('it fades out the viewfinder when in `picture` mode', function() {
+          this.timeout(4000);
+
+          var hide = ViewfinderProto.hide;
+          var key;
+
+          return el.get('pictureSizes')
+            .then(result => {
+              var last = result[result.length -1];
+              key = last.key;
+              return el.set('pictureSize', key);
+            })
+
+            .then(result => {
+              assert.equal(result, key);
+              sinon.assert.calledOnce(hide);
+              assert.isTrue(hide.calledBefore(mozCamera.setConfiguration));
+              return el.set('mode', 'video');
+            })
+
+            .then(() => el.get('pictureSizes'))
+            .then(result => {
+              key = result[0].key;
+
+              mozCamera.setConfiguration.reset();
+              hide.reset();
+
+              return el.set('pictureSize', key);
+            })
+
+            .then(result => {
+              assert.equal(result, key);
+              sinon.assert.notCalled(hide);
+              sinon.assert.calledOnce(mozCamera.setConfiguration);
+            });
+        });
       });
 
-      test('it fails silently if value unknown', function() {
-        return el.setFlashMode('on')
-          .then(result => {
-            assert.equal(mozCamera.flashMode, 'on');
-            assert.equal(result, 'on');
-            return el.setFlashMode('unknown');
-          })
+      suite('get >>', function() {
+        test(`get('pictureSize') returns the size key`, function() {
+          return el.get('pictureSize')
+            .then(result => {
+              assert.equal(result, '2592x1944');
+            });
+        });
 
-        .then(result => {
-          assert.equal(mozCamera.flashMode, 'on');
-          assert.equal(result, 'on');
+        test(`get('pictureSizes') returns Array of available sizes`, function() {
+          return el.get('pictureSizes')
+            .then(result => {
+              assert.deepEqual(result[0], {
+                key: '2592x1944',
+                width: 2592,
+                height: 1944,
+                pixelSize: 5038848,
+                mp: '5.0'
+              });
+
+              assert.deepEqual(result[10], {
+                key: '640x480',
+                width: 640,
+                height: 480,
+                pixelSize: 307200,
+                mp: '0.3'
+              });
+            });
+        });
+      });
+    });
+
+    suite('recorder-profiles >>', function() {
+      suite('set >>', function() {
+        setup(function() {
+          this.sinon.spy(ViewfinderProto, 'update');
+          this.sinon.spy(ViewfinderProto, 'show');
+          this.sinon.spy(ViewfinderProto, 'hide');
+        });
+
+        test('it fades out the viewfinder when in `video` mode', function() {
+          this.timeout(4000);
+
+          var hide = ViewfinderProto.hide;
+          var key;
+
+          return el.set('mode', 'video')
+            .then(() => el.get('recorderProfiles'))
+            .then(result => {
+              var last = result[result.length -1];
+              key = last.key;
+
+              mozCamera.setConfiguration.reset();
+              hide.reset();
+
+              return el.set('recorderProfile', key);
+            })
+
+            .then(result => {
+              assert.equal(result, key);
+              sinon.assert.calledOnce(hide);
+              assert.isTrue(hide.calledBefore(mozCamera.setConfiguration));
+              return el.set('mode', 'picture');
+            })
+
+            .then(() => el.get('recorderProfiles'))
+            .then(result => {
+              key = result[0].key;
+
+              mozCamera.setConfiguration.reset();
+              hide.reset();
+
+              return el.set('recorderProfile', key);
+            })
+
+            .then(result => {
+              assert.equal(result, key);
+              sinon.assert.notCalled(hide);
+              sinon.assert.calledOnce(mozCamera.setConfiguration);
+            });
+        });
+      });
+
+      suite('get >>', function() {
+        test('it returns an Array of available profiles', function() {
+          return el.get('recorderProfiles')
+            .then(result => {
+              assert.equal(result.length, 7);
+
+              assert.deepEqual(result[0], {
+                key: '720p',
+                width: 1280,
+                height: 720,
+                aspect: '16:9',
+                pixelSize: 921600
+              });
+
+              assert.deepEqual(result[1], {
+                  key: 'fwvga',
+                  width: 864,
+                  height: 480,
+                  aspect: '9:5',
+                  pixelSize: 414720
+              });
+
+              assert.deepEqual(result[2], {
+                  key: 'wvga',
+                  width: 800,
+                  height: 480,
+                  aspect: '5:3',
+                  pixelSize: 384000
+              });
+
+              assert.deepEqual(result[3], {
+                  key: '480p',
+                  width: 720,
+                  height: 480,
+                  aspect: '3:2',
+                  pixelSize: 345600
+              });
+
+              assert.deepEqual(result[4], {
+                  key: 'vga',
+                  width: 640,
+                  height: 480,
+                  aspect: '4:3',
+                  pixelSize: 307200
+              });
+
+              assert.deepEqual(result[5], {
+                  key: 'cif',
+                  width: 352,
+                  height: 288,
+                  aspect: '11:9',
+                  pixelSize: 101376
+              });
+
+              assert.deepEqual(result[6], {
+                  key: 'qvga',
+                  width: 320,
+                  height: 240,
+                  aspect: '4:3',
+                  pixelSize: 76800
+              });
+            });
+        });
+      });
+    });
+
+    suite('flash-modes >>', function() {
+      suite('set >>', function() {
+
+        test('it sets the flashMode on the moz camera', function() {
+          return el.setFlashMode('on')
+            .then(() => el.get('flashMode'))
+            .then(result => {
+              assert.equal(result, 'on');
+              assert.equal(mozCamera.flashMode, 'on');
+            });
+        });
+
+        test('it can be called directly after .setCamera()', function() {
+          el.setCamera('front');
+          el.setCamera('back');
+          return el.setFlashMode('on')
+            .then(() => el.get('camera'))
+            .then(result => {
+              assert.equal(result, 'back');
+              assert.equal(mozCamera.flashMode, 'on');
+            });
+        });
+
+        test('it throws if value unknown', function() {
+          var spy = sinon.spy();
+
+          return el.set('flashMode', 'on')
+            .then(result => {
+              assert.equal(mozCamera.flashMode, 'on');
+              assert.equal(result, 'on');
+              return el.set('flashMode', 'unknown');
+            })
+
+            .then(spy) // should not be called
+
+            .catch(err => {
+              assert.include(err.message, 'invalid');
+              return el.get('flashMode');
+            })
+
+            .then(result => {
+              assert.equal(mozCamera.flashMode, 'on');
+              assert.equal(result, 'on');
+              sinon.assert.notCalled(spy);
+            });
+        });
+
+        test('the flash mode persists between components', function() {
+          return el.setFlashMode('off')
+            .then(() => {
+              el.remove();
+              el = create();
+              return el.get('flashMode');
+            })
+
+            .then(result => {
+              assert.equal(result, 'off');
+            });
+        });
+
+        test.skip('should be able to set and then change camera', function() {
+          el.set('flashMode', 'on');
+
+          return el.set('camera', 'front')
+            .then(() => el.set('camera', 'back'))
+            .then(() => el.get('flashMode'))
+            .then(result => assert.equal(result, 'on'));
+        });
+
+        test('the flash mode persists between cameras', function() {
+          return el.set('flashMode', 'on')
+            .then(() => el.set('camera', 'front'))
+            .then(() => {
+              return el.get('flashMode');
+            })
+
+            .then(result => {
+              assert.isUndefined(result);
+              return el.set('camera', 'back');
+            })
+
+            .then(() => el.get('flashMode'))
+            .then(result => {
+              assert.equal(result, 'on');
+            });
+        });
+
+        test('the flash mode persists between modes', function() {
+          return el.get('flashMode')
+            .then(result => assert.equal(result, 'auto'))
+            .then(() => el.set('flashMode', 'on'))
+            .then(() => el.set('mode', 'video'))
+            .then(() => el.set('mode', 'picture'))
+            .then(() => el.get('flashMode'))
+            .then(result => {
+              assert.equal(result, 'on');
+            });
+        });
+      });
+
+      suite('get >>', function() {
+        test('it should return `undefined` when there are no flashModes', function() {
+          el.set('camera', 'front');
+          return el.get('flashMode')
+            .then(result => {
+              assert.equal(result, undefined);
+            });
         });
       });
     });
@@ -1104,69 +1373,6 @@ suite('fxos-camera >>', function() {
             assert.deepEqual(result, ['front', 'back']);
           });
       });
-
-      test('it returns the available recorderProfiles', function() {
-        return el.get('recorderProfiles')
-          .then(result => {
-            assert.equal(result.length, 7);
-
-            assert.deepEqual(result[0], {
-              key: '720p',
-              width: 1280,
-              height: 720,
-              aspect: '16:9',
-              pixelSize: 921600
-            });
-
-            assert.deepEqual(result[1], {
-                key: 'fwvga',
-                width: 864,
-                height: 480,
-                aspect: '9:5',
-                pixelSize: 414720
-            });
-
-            assert.deepEqual(result[2], {
-                key: 'wvga',
-                width: 800,
-                height: 480,
-                aspect: '5:3',
-                pixelSize: 384000
-            });
-
-            assert.deepEqual(result[3], {
-                key: '480p',
-                width: 720,
-                height: 480,
-                aspect: '3:2',
-                pixelSize: 345600
-            });
-
-            assert.deepEqual(result[4], {
-                key: 'vga',
-                width: 640,
-                height: 480,
-                aspect: '4:3',
-                pixelSize: 307200
-            });
-
-            assert.deepEqual(result[5], {
-                key: 'cif',
-                width: 352,
-                height: 288,
-                aspect: '11:9',
-                pixelSize: 101376
-            });
-
-            assert.deepEqual(result[6], {
-                key: 'qvga',
-                width: 320,
-                height: 240,
-                aspect: '4:3',
-                pixelSize: 76800
-            });
-          });
-      });
     });
 
     suite('persistence >>', function() {
@@ -1206,19 +1412,6 @@ suite('fxos-camera >>', function() {
 
           .then(result => {
             assert.equal(result, size);
-          });
-      });
-
-      test('the flash mode persists', function() {
-        return el.setFlashMode('off')
-          .then(() => {
-            el.remove();
-            el = create();
-            return el.get('flashMode');
-          })
-
-          .then(result => {
-            assert.equal(result, 'off');
           });
       });
     });

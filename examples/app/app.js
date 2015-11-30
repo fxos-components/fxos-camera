@@ -10,9 +10,12 @@ camera.started.then(() => {
   updateControls();
 }).catch(e => console.error(e));
 
-camera.addEventListener('click', camera.focus.bind(camera));
+camera.addEventListener('click', e => {
+  camera.focus(e);
+});
+
 controls.addEventListener('click', e => {
-  camera.takePicture()
+  camera.takePicture(`${Date.now()}.jpg`)
     .then(picture => console.log('PICTURE', picture))
     .catch(err => console.error(err));
 });

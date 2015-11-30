@@ -1,9 +1,8 @@
-(define => {define((require,exports,module) => {
 'use strict';
 
-function Storage() {}
+function Cookies() {}
 
-Storage.prototype = {
+Cookies.prototype = {
   get(key) {
     if (!key) return;
     return decodeURIComponent(document.cookie.replace(new RegExp('(?:(?:^|.*;)\\s*' + encodeURIComponent(key).replace(/[\-\.\+\*]/g, '\\$&') + '\\s*\\=\\s*([^;]*).*$)|^.*$'), '$1')) || undefined;
@@ -42,6 +41,4 @@ Storage.prototype = {
  * Exports
  */
 
-module.exports = new Storage();
-
-})})(((n,w)=>{return(typeof define)[0]=='f'&&define.amd?define:(typeof module)[0]=='o'?c =>{c(require,exports,module)}:c=>{var m={exports:{}},r=n=>w[n];w[n]=c(r,m.exports,m)||m.exports;};})('../storage',this));/*jshint ignore:line*/
+module.exports = new Cookies();

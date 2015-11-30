@@ -13,16 +13,6 @@ module.exports = function(config) {
 
     // list of files / patterns to load in the browser
     files: [
-      'node_modules/gaia-component/gaia-component.js',
-      'lib/moz-camera/pick-thumbnail-size.js',
-      'lib/moz-camera/format-sizes.js',
-      'lib/storage.js',
-      'lib/moz-camera/focus.js',
-      'lib/moz-camera/device-storage.js',
-      'lib/moz-camera/picture.js',
-      'lib/moz-camera/video.js',
-      'lib/moz-camera/moz-camera.js',
-      'lib/viewfinder.js',
       'fxos-camera.js',
       'test/lib/capabilities.js',
       'test/lib/mock-moz-camera.js',
@@ -33,7 +23,20 @@ module.exports = function(config) {
     // test results reporter to use
     // possible values: 'dots', 'progress'
     // available reporters: https://npmjs.org/browse/keyword/karma-reporter
-    reporters: ['progress'],
+    reporters: [
+      'progress',
+      'coverage'
+    ],
+
+    preprocessors: {
+      'fxos-camera.js': ['coverage']
+    },
+
+    coverageReporter: {
+      type : 'lcov',
+      dir : 'test/',
+      subdir: 'coverage'
+    },
 
     client: {
       captureConsole: true,

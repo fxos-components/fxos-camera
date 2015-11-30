@@ -1,4 +1,3 @@
-(define => {define((require,exports,module) => {
 'use strict';
 
 /**
@@ -6,7 +5,7 @@
  *
  * @type {Funciton}
  */
-var debug = 1 ? (...args) => console.log('[Focus]', ...args) : () => {};
+var debug = 0 ? (...args) => console.log('[Focus]', ...args) : () => {};
 
 /**
  * Exports
@@ -269,5 +268,3 @@ function getMaxFaces(mozCamera) {
   var hasApi = !!mozCamera.startFaceDetection;
   return hasApi ? maxFaces : 0;
 }
-
-})})(((n,w)=>{return(typeof define)[0]=='f'&&define.amd?define:(typeof module)[0]=='o'?c =>{c(require,exports,module)}:c=>{var m={exports:{}},r=n=>w[n];w[n]=c(r,m.exports,m)||m.exports;};})('./focus',this));/*jshint ignore:line*/

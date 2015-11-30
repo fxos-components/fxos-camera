@@ -1,4 +1,3 @@
-(define => {define((require,exports,module) => {
 'use strict';
 
 var debug = 0 ? (...args) => console.log('[pick-thumbnail]', ...args) : ()=> {};
@@ -58,5 +57,3 @@ function fillsScreen(pixelsWidth, pixelsHeight) {
   return (pixelsWidth >= screen.width || pixelsHeight >= screen.height)
     && (pixelsWidth >= screen.height || pixelsHeight >= screen.width);
 }
-
-})})(((n,w)=>{return(typeof define)[0]=='f'&&define.amd?define:(typeof module)[0]=='o'?c =>{c(require,exports,module)}:c=>{var m={exports:{}},r=n=>w[n];w[n]=c(r,m.exports,m)||m.exports;};})('./pick-thumbnail-size',this));/*jshint ignore:line*/

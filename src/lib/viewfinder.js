@@ -1,4 +1,3 @@
-(define => define((require,exports,module) => {
 'use strict';
 
 /**
@@ -89,7 +88,7 @@ Viewfinder.prototype = {
   },
 
   setFaces(faces) {
-    debug('set faces', faces);
+    debug('set faces', faces.length);
     if (!this.size) return;
     var unused = this.els.faces.slice(faces.length);
     faces.forEach(this.showFace, this);
@@ -140,7 +139,6 @@ Viewfinder.prototype = {
   },
 
   hideFace(el) {
-    debug('hide face', el);
     el.classList.remove('active');
     el._x = el._y = null;
   },
@@ -154,7 +152,7 @@ Viewfinder.prototype = {
   setFocusPoint(point) {
     if (!point) return;
     if (!this.size) return;
-    debug('set focus point', point);
+    debug('set focus point');
 
     var px = this.pointToPx(point);
     var el = this.els.focus;
@@ -169,6 +167,7 @@ Viewfinder.prototype = {
 
   hide(options) {
     return new Promise((resolve, reject) => {
+      debug('hide');
       if (this.hidden++) return resolve();
       debug('hiding ...');
 
@@ -332,9 +331,3 @@ function once(el, name, fn, max) {
     fn();
   });
 }
-
-function getDistance(x1, x2, y1, y2) {
-  return Math.sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
-}
-
-}))(((n,w)=>{return(typeof define)[0]=='f'&&define.amd?define:(typeof module)[0]=='o'?c =>{c(require,exports,module)}:c=>{var m={exports:{}},r=n=>w[n];w[n]=c(r,m.exports,m)||m.exports;};})('./lib/viewfinder',this));/*jshint ignore:line*/

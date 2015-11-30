@@ -3,10 +3,11 @@
   "description": "Easy camera apps",
   "launch_path": "/index.html",
   "icons": {
-    "16": "/icons/icon16x16.png",
-    "48": "/icons/icon48x48.png",
-    "60": "/icons/icon60x60.png",
-    "128": "/icons/icon128x128.png"
+    "84": "/icons/camera_84.png",
+    "126": "/icons/camera_126.png",
+    "142": "/icons/camera_142.png",
+    "189": "/icons/camera_189.png",
+    "284": "/icons/camera_284.png"
   },
 
   "type": "certified",

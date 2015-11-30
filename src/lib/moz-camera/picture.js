@@ -1,4 +1,3 @@
-(define => {define((require,exports,module) => {
 'use strict';
 
 /**
@@ -89,5 +88,3 @@ Picture.prototype = {
       });
   }
 };
-
-})})(((n,w)=>{return(typeof define)[0]=='f'&&define.amd?define:(typeof module)[0]=='o'?c =>{c(require,exports,module)}:c=>{var m={exports:{}},r=n=>w[n];w[n]=c(r,m.exports,m)||m.exports;};})('./picture',this));/*jshint ignore:line*/

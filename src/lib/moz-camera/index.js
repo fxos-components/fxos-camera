@@ -1,4 +1,3 @@
-(define => {define((require,exports,module) => {
 'use strict';
 
 /**
@@ -8,7 +7,7 @@
 var pickThumbnail = require('./pick-thumbnail-size');
 var DeviceStorage = require('./device-storage');
 var formatSizes = require('./format-sizes');
-var storage = require('../storage');
+var cookies = require('../cookies');
 var Picture = require('./picture');
 var Focus = require('./focus');
 var Video = require('./video');
@@ -18,7 +17,7 @@ var Video = require('./video');
  *
  * @type {Function}
  */
-var debug = 1 ? (...args) => console.log('[MozCamera]', ...args) : () => {};
+var debug = 0 ? (...args) => console.log('[MozCamera]', ...args) : () => {};
 
 /**
  * Shorthand
@@ -28,11 +27,29 @@ var debug = 1 ? (...args) => console.log('[MozCamera]', ...args) : () => {};
 var on = (el, name, fn) => el.addEventListener(name, fn);
 var off = (el, name, fn) => el.removeEventListener(name, fn);
 
+var pictureSize = {
+  toConfig(key) {
+    if (!key) return;
+    var parts = key.split('x');
+    return {
+      key: key,
+      width: Number(parts[0]),
+      height: Number(parts[1])
+    };
+  },
+
+  toKey(config) {
+    if (!config) return;
+    return `${config.width}x${config.height}`;
+  }
+};
+
 /**
  * Exports
  */
 
-module.exports = MozCamera;
+exports = module.exports = MozCamera;
+exports.cookies = cookies; // for testing
 
 function MozCamera(options) {
   debug('new', options);
@@ -59,26 +76,24 @@ MozCamera.prototype = {
    */
   load() {
     debug('load');
-    // return this.block('load', () => {
-      return this.getCamera()
-        .then(({camera, configuration}) => {
-          debug('got camera');
-          var capabilities = camera.capabilities;
+    return this.getCamera()
+      .then(({camera, configuration}) => {
+        debug('got camera');
+        var capabilities = camera.capabilities;
 
-          this.sensorAngle = camera.sensorAngle;
-          this.mozCamera = camera;
+        this.sensorAngle = camera.sensorAngle;
+        this.mozCamera = camera;
 
-          this.effectModes = capabilities.effectModes;
-          this.sceneModes = capabilities.sceneModes;
-          this.flashModes = capabilities.flashModes;
+        this.effectModes = capabilities.effectModes;
+        this.sceneModes = capabilities.sceneModes;
+        this.flashModes = capabilities.flashModes;
 
-          this.updateRecorderProfiles(capabilities.recorderProfiles);
-          this.updatePictureSizes(capabilities.pictureSizes);
+        this.updateRecorderProfiles(capabilities.recorderProfiles);
+        this.updatePictureSizes(capabilities.pictureSizes);
 
-          on(camera, 'shutter', this.onShutter);
-          this.onConfigured(configuration);
-        });
-      // });
+        on(camera, 'shutter', this.onShutter);
+        this.onConfigured(configuration);
+      });
   },
 
   configure(params) {
@@ -210,24 +225,70 @@ MozCamera.prototype = {
     });
   },
 
+  /**
+   * Update the camera hardware to use
+   * the preferred thumbnail size based
+   * on the current pictureSize.
+   *
+   * Preferred: Largest available thumbnail
+   * that most closely matches the current
+   * aspect ratio.
+   *
+   * @private
+   */
   updateThumbnailSize() {
     var sizes = this.mozCamera.capabilities.thumbnailSizes;
     var picked = pickThumbnail(sizes, this.pictureSize);
     if (picked) this.mozCamera.setThumbnailSize(picked);
   },
 
+  /**
+   * Update the locally formatted recorder
+   * profiles from the raw list provided
+   * by the camera.
+   *
+   * The camera hardware provides an object.
+   * We filter these down to unique profiles
+   * and internally store an Array and lookup
+   * Object.
+   *
+   * @param  {Object} raw
+   */
   updateRecorderProfiles(raw) {
     var recorderProfiles = formatSizes.video(raw);
     this.recorderProfiles = recorderProfiles.list;
     this.recorderProfiles.hash = recorderProfiles.hash;
   },
 
+  /**
+   * Update the locally formatted picture
+   * sizes from the raw list provided by
+   * the camera.
+   *
+   * The camera hardware provides an `Array`.
+   * We filter these down to a list of unique
+   * sizes that match the standard `4:3` aspect.
+   *
+   * We internally store a formatted `Array` and
+   * lookup `Object`. We use keys in the format
+   * `<width>x<height>` to identify picture sizes
+   * instead of the {width, height} format used
+   * by the CameraAPI as it's easier to store,
+   * pass arround and make checks against.
+   *
+   * @param  {Object} raw
+   */
   updatePictureSizes(raw) {
     var pictureSizes = formatSizes.picture(raw);
     this.pictureSizes = pictureSizes.list;
     this.pictureSizes.hash = pictureSizes.hash;
   },
 
+  /**
+   * Set the picture size.
+   *
+   * @param {String} key
+   */
   setPictureSize(key) {
     return this.ready()
       .then(() => {
@@ -236,9 +297,16 @@ MozCamera.prototype = {
         debug('setting picture size ...', key);
         this.setCached('pictureSize', key);
         return this.configure({ pictureSize: size });
-      });
+      })
+
+      .then(() => this.get('pictureSize'));
   },
 
+  /**
+   * Set the recorded profile.
+   *
+   * @param {String} key
+   */
   setRecorderProfile(key) {
     return this.ready()
       .then(() => {
@@ -247,14 +315,33 @@ MozCamera.prototype = {
         debug('setting recorder profile ...', key);
         this.setCached('recorderProfile', key);
         return this.configure({ recorderProfile: key });
-      });
+      })
+
+      .then(() => this.get('recorderProfile'));
   },
 
+  /**
+   * Get a full recorder profile by key.
+   *
+   * @param  {String} key
+   * @return {Object}
+   */
   getRecorderProfile(key) {
     debug('get recorder profile', key);
     return this.recorderProfiles.hash[key];
   },
 
+  /**
+   * Get a full picture-size profile by key.
+   *
+   * @example
+   *
+   * mozCamera.getPictureSize('1280x720') //=> {...}
+   * mozCamera.getPictureSize({ width: 1280, height: 720 }) //=> {...}
+   *
+   * @param  {(String|Object)} param
+   * @return {(Object|undefined)}
+   */
   getPictureSize(param) {
     var key = typeof param === 'object'
       ? pictureSize.toKey(param)
@@ -263,15 +350,19 @@ MozCamera.prototype = {
     return this.pictureSizes.hash[key];
   },
 
+  /**
+   * Set the flash mode.
+   *
+   * @param {String} value
+   */
   setFlashMode(value) {
-    return this.ready()
-      .then(() => {
-        if (!this.hasFlashMode(value)) return this.get('flashMode');
-        this.setCached(`${this.mode}:flashMode`, value);
-        this.mozCamera.flashMode = value;
-        debug('flash mode set', value);
-        return value;
-      });
+    return this.one('setFlashMode', () => {
+      if (!this.hasFlashMode(value)) throw error(8, value);
+      this.setCached(`${this.mode}:flashMode`, value);
+      this.mozCamera.flashMode = value;
+      debug('flash mode set', value);
+      return value;
+    });
   },
 
   hasFlashMode(value) {
@@ -280,6 +371,7 @@ MozCamera.prototype = {
 
   setFlashModeFromCache() {
     var mode = this.getCached(`${this.mode}:flashMode`);
+    debug('set flash mode from cache', mode);
     if (!this.hasFlashMode(mode)) return;
     this.mozCamera.flashMode = mode;
   },
@@ -601,16 +693,35 @@ MozCamera.prototype = {
       });
   },
 
+  /**
+   * Get a value from the persistent cache.
+   *
+   * @param  {String} key
+   * @return {(String|null)}
+   */
   getCached(key) {
-    debug('set cached', this.type, key);
-    return storage.get(`${this.type}:${key}`);
+    debug('get cached', this.type, key);
+    return cookies.get(`${this.type}:${key}`);
   },
 
+  /**
+   * Set a value to the persistent cache.
+   *
+   * @param  {String} key
+   * @param  {String} value
+   */
   setCached(key, value) {
     debug('set cached', this.type, key, value);
-    return storage.set(`${this.type}:${key}`, value);
+    cookies.set(`${this.type}:${key}`, value);
   },
 
+  /**
+   * Returns a Promise that resolves
+   * once the MozCamera has completed
+   * any 'blocking' tasks.
+   *
+   * @return {Promise}
+   */
   ready() {
     return this._ready
       .catch(err => {
@@ -666,32 +777,12 @@ MozCamera.prototype = {
         debug('one task done', name);
         return result;
       });
-  },
-
-  // to overwrite
-  onError() {}
+  }
 };
 
 /**
  * Utils
  */
-
-var pictureSize = {
-  toConfig(key) {
-    if (!key) return;
-    var parts = key.split('x');
-    return {
-      key: key,
-      width: Number(parts[0]),
-      height: Number(parts[1])
-    };
-  },
-
-  toKey(config) {
-    if (!config) return;
-    return `${config.width}x${config.height}`;
-  }
-};
 
 function Deferred() {
   this.promise = new Promise((resolve, reject) => {
@@ -716,8 +807,7 @@ function error(id, ...args) {
     4: `destroyed`,
     5: `in-progress`,
     6: `unknown picture-size: ${args[0]}`,
-    7: `unknown recorder-profile: ${args[0]}`
+    7: `unknown recorder-profile: ${args[0]}`,
+    8: `invalid flash mode: '${args[0]}'`
   }[id]);
 }
-
-})})(((n,w)=>{return(typeof define)[0]=='f'&&define.amd?define:(typeof module)[0]=='o'?c =>{c(require,exports,module)}:c=>{var m={exports:{}},r=n=>w[n];w[n]=c(r,m.exports,m)||m.exports;};})('./lib/moz-camera',this));/*jshint ignore:line*/
